@@ -1,0 +1,312 @@
+---
+title: "Entrega Final Series"
+author: "Leandro Beruueta,Lucca Frachelle , Cecilia Waksman"
+date: today
+warning: false
+message: false
+echo: false
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme:
+      light: flatly
+      dark: darkly
+    fig-align: center
+    toc-float: true
+embed-resources: true
+toc-location: right
+toc-title: 'Contenido'
+---
+
+
+```{r}
+library(forecast)
+library(tidyverse)
+library(tseries)
+library(urca)
+library(lmtest)
+library(gridExtra)
+library(seasonal)
+library(readxl)
+library(knitr)
+library(kableExtra)
+library(broom)
+library(tseries)
+library(gtsummary)
+```
+
+```{r}
+df = read_excel("series_bcu.xlsx" , sheet = "cantidad_personas_deuda_vigente") %>%
+  select(fecha, cantidad_clientes, tipoinstitucion) %>%
+  filter(tipoinstitucion == "Santander")
+cantidad_clientes_ts <- ts(df$cantidad_clientes, start = c(2018, 12), frequency = 12)
+```
+La serie presenta una clara tendencia creciente a lo largo del tiempo, especialmente a partir de 2020, con un aumento significativo hacia 2024. No parece haber una estacionalidad evidente o un patrón repetitivo a intervalos fijos. La variabilidad parece aumentar ligeramente con el nivel de la serie, lo que podría sugerir la necesidad de una transformación logarítmica si la homocedasticidad fuera un problema (aunque esto se evalúa más adelante con los residuos)
+
+# Análisis Inicial
+
+```{r}
+autoplot(cantidad_clientes_ts) + 
+  labs(x = "Fecha", y = "Cantidad de personas", title = "Serie de Cantidad de personas deuda en Santander") +
+  theme(panel.grid.minor = element_blank())
+```
+
+## Tabla de estadísticas
+```{r}
+cantidad_clientes_ts |> 
+  summary() |> 
+  enframe(name = "Estadística", value = "Valor") |> 
+  kable(caption = "Estadísticas Descriptivas de la Serie de Cantidad de Personas") 
+```
+
+# Identificación del Modelo
+
+## Autocorrelación (FAC) y Autocorrelación Parcial (FACP)
+
+```{r}
+clientes_acf <- ggAcf(cantidad_clientes_ts, lag.max = 24, type = "correlation") + 
+  labs(x = "Rezago", y = "Autocorrelación", title = "Función de Autocorrelación (FAC)")
+
+clientes_pacf <- ggAcf(cantidad_clientes_ts, lag.max = 24, type = "partial") + 
+  labs(x = "Rezago", y = "Autocorrelación parcial", title = "Función de Autocorrelación Parcial (FACP)")
+
+clientes_acf
+```
+
+FAC (Función de Autocorrelación): La FAC decrece lentamente y de forma persistente, con coeficientes de autocorrelación significativos que se mantienen altos incluso en rezagos grandes. Esto es un fuerte indicio de que la serie no es estacionaria en media. La presencia de autocorrelaciones significativas en rezagos altos sugiere una tendencia.
+
+
+```{r}
+clientes_pacf
+```
+
+La FACP muestra un pico significativo en el rezago 1 y luego decae rápidamente, con pocos o ningún otro rezago significativo más allá del primero. Esto podría sugerir un componente AR(1) si la serie fuera estacionaria. Sin embargo, dada la FAC, es más probable que la serie necesite ser diferenciada.
+
+## Serie Diferenciada
+
+```{r}
+diff_cantidad_clientes_ts <- diff(cantidad_clientes_ts, differences = 1)
+autoplot(diff_cantidad_clientes_ts) + 
+  labs(x = "Fecha", y = "Cantidad de personas", title = "Serie de Cantidad de personas deuda en Santander diferenciada 1 vez") +
+  theme(panel.grid.minor = element_blank())
+```
+
+
+```{r}
+## facp
+diff_clientes_pacf <- ggAcf(diff_cantidad_clientes_ts, lag.max = 24, type = "partial") +
+  labs(x = "Rezago", y = "Autocorrelación parcial", title = "FACP de la Serie Diferenciada")
+
+diff_clientes_pacf
+```
+
+
+
+
+
+
+```{r}
+# Autocorrelación (FAC) y Autocorrelación Parcial (FACP) de la serie diferenciada
+diff_clientes_acf <- ggAcf(diff_cantidad_clientes_ts, lag.max = 24, type = "correlation") +
+  labs(x = "Rezago", y = "Autocorrelación", title = "FAC de la Serie Diferenciada")
+
+diff_clientes_pacf <- ggAcf(diff_cantidad_clientes_ts, lag.max = 24, type = "partial") +
+  labs(x = "Rezago", y = "Autocorrelación parcial", title = "FACP de la Serie Diferenciada")
+diff_clientes_acf
+```
+
+
+
+Al analizar la Función de Autocorrelación (FAC) de la serie de "Cantidad de personas deuda en Santander" una vez diferenciada (d=1), se observa que, aunque la tendencia lineal ha sido eliminada (lo que se corrobora con los tests de Dickey-Fuller Aumentado y KPSS), persisten patrones de autocorrelación significativos.
+
+Específicamente, notamos la presencia de picos significativos en el rezago 3, y en menor medida, en el rezago 6. Estos picos se extienden más allá de las bandas de confianza (líneas azules discontinuas), lo que indica que las observaciones están autocorrelacionadas con sus valores de hace 3 y 6 períodos.
+
+La aparición de estos patrones recurrentes en múltiplos de un cierto rezago (en este caso, 3) es una clara evidencia de estacionalidad. Dado que estos picos ocurren cada 3 períodos, sugiere una estacionalidad de tipo trimestral si la frecuencia de los datos es trimestral, o un patrón recurrente cada tres meses si la frecuencia es mensual (pero la estacionalidad anual principal sería en el rezago 12).
+
+La persistencia de esta autocorrelación estacional implica que el modelo aún no ha capturado completamente la estructura de la serie. Para abordar esta estacionalidad y hacer que la serie sea completamente estacionaria, es necesario aplicar una diferenciación estacional. Esto se realizará con un rezago estacional (lag) igual al período identificado (en este caso, lag=3), lo que se conoce como una diferenciación estacional de orden D=1.
+
+
+## Serie Diferenciada Estacional lag=3
+```{r}
+diff_estacional<- diff(diff_cantidad_clientes_ts, lag = 3)
+```
+
+```{r}
+autoplot(diff_estacional) + 
+  labs(x = "Fecha", y = "Cantidad de personas", title = "Serie de Cantidad de personas deuda en Santander diferenciada 1 vez") +
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r}
+diff_estacional_acf <- ggAcf(diff_estacional, lag.max = 24, type = "correlation") +
+  labs(x = "Rezago", y = "Autocorrelación", title = "FAC de la Serie Diferenciada Estacional")
+
+diff_estacional_pacf <- ggAcf(diff_estacional, lag.max = 24, type = "partial") +
+  labs(x = "Rezago", y = "Autocorrelación parcial", title = "FACP de la Serie Diferenciada Estacional")
+
+diff_estacional_acf
+```
+
+```{r}
+diff_estacional_acf = ggAcf(diff_estacional, lag.max = 24, type = "correlation") +
+  labs(x = "Rezago", y = "Autocorrelación", title = "FAC de la Serie Diferenciada Estacional")
+
+diff_estacional_acf
+```
+
+
+```{r}
+modelo_sarima_propuesto <- Arima(y = cantidad_clientes_ts,
+                                 order = c(1, 1, 1),           # p, d, q no estacionales
+                                 seasonal = list(order = c(0, 1, 0), period = 3), # P, D, Q estacionales y periodo
+                                 lambda = NULL, # Si no aplicas transformacion Box-Cox
+                                 method = "ML" # Maxima verosimilitud
+                                 )
+```
+
+
+```{r}
+# Obtener p-valores con coeftest para inyectarlos en gtsummary
+sarima_coef_p_values_df <- coeftest(modelo_sarima_propuesto) |>
+  unclass() |>
+  as.data.frame() |>
+  tibble::rownames_to_column(var = "term") |>
+  dplyr::select(term, `Pr(>|z|)`) |>
+  dplyr::rename(p.value = `Pr(>|z|)`) # Renombrar a p.value para gtsummary
+
+tbl_regression(modelo_sarima_propuesto, exponentiate = FALSE) |>
+  modify_header(label = "**Término**") |>
+  modify_caption("Coeficientes del Modelo SARIMA(1,1,1)(0,1,0)[3]") |>
+  # Inyectar la columna de p-valores manualmente
+  modify_table_body(~ .x |>
+                      dplyr::left_join(sarima_coef_p_values_df, by = "term")) |>
+  add_significance_stars()
+
+# Resumen del modelo (AIC, AICc, BIC)
+model_sarima_metrics <- data.frame(
+  AIC = modelo_sarima_propuesto$aic,
+  AICc = modelo_sarima_propuesto$aicc,
+  BIC = modelo_sarima_propuesto$bic
+)
+kable(model_sarima_metrics, caption = "Criterios de Información del Modelo SARIMA(1,1,1)(0,1,0)[3]")
+
+# Medidas de Error del Conjunto de Entrenamiento
+error_measures_sarima <- accuracy(modelo_sarima_propuesto) %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "Conjunto") %>%
+  dplyr::rename(
+    RMSE = `RMSE`,
+    MAE = `MAE`,
+    MPE = `MPE`,
+    MAPE = `MAPE`,
+    MASE = `MASE`,
+    ACF1 = `ACF1`
+  )
+kable(error_measures_sarima, caption = "Medidas de Error del Modelo SARIMA(1,1,1)(0,1,0)[3] en el Conjunto de Entrenamiento")
+
+## Pruebas de Raíz Unitaria para la Serie Diferenciada Estacional
+```{r}
+# ADF Test
+adf_result_estacional <- adf.test(diff_estacional, alternative = "stationary")
+adf_table_estacional <- data.frame(
+  Test = "ADF Test",
+  Statistic = adf_result_estacional$statistic,
+  p_value = adf_result_estacional$p.value,
+  Method = adf_result_estacional$method,
+  row.names = NULL
+)
+
+# KPSS Test
+kpss_result_estacional <- kpss.test(diff_estacional, null = "Level")
+kpss_table_estacional <- data.frame(
+  Test = "KPSS Test",
+  Statistic = kpss_result_estacional$statistic,
+  p_value = kpss_result_estacional$p.value,
+  Method = kpss_result_estacional$method,
+  row.names = NULL
+)
+
+# Unificar las tablas
+combined_tests_table_estacional <- rbind(adf_table_estacional, kpss_table_estacional)
+
+kable(combined_tests_table_estacional, caption = "Resultados de las Pruebas de Raíz Unitaria (ADF y KPSS) en la Serie Diferenciada Estacional")
+```
+
+# Diagnóstico de los Residuos del Modelo Propuesto
+```{r}
+# Guardar los residuos del modelo
+residuos_modelo_sarima <- residuals(modelo_sarima_propuesto)
+
+# Graficar los residuos
+autoplot(residuos_modelo_sarima) +
+  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo SARIMA(1,1,1)(0,1,0)[3]") +
+  geom_hline(yintercept = 0, color = "red")
+
+# FAC y FACP de los residuos
+residuos_acf <- ggAcf(residuos_modelo_sarima, lag.max = 24, type = "correlation") +
+  labs(x = "Rezago", y = "Autocorrelación", title = "FAC de los Residuos")
+residuos_pacf <- ggAcf(residuos_modelo_sarima, lag.max = 24, type = "partial") +
+  labs(x = "Rezago", y = "Autocorrelación parcial", title = "FACP de los Residuos")
+grid.arrange(residuos_acf, residuos_pacf)
+
+# Test de Ljung-Box de los residuos
+# fitdf = p + q + P + Q. Para SARIMA(1,1,1)(0,1,0)[3] es 1 + 1 + 0 + 0 = 2
+
+ljung_box_10 <- Box.test(residuos_modelo_sarima, lag = 10, type = "Ljung-Box", fitdf = 2) |> tidy()
+ljung_box_20 <- Box.test(residuos_modelo_sarima, lag = 20, type = "Ljung-Box", fitdf = 2) |> tidy()
+
+ljung_box_combined <- rbind(ljung_box_10, ljung_box_20) %>%
+  mutate(Test = c("Ljung-Box (Lag 10)", "Ljung-Box (Lag 20)"), .before = method) %>%
+  select(Test, statistic, p.value, method, parameter) %>%
+  rename(
+    Estadistico = statistic,
+    p_value = p.value,
+    Metodo = method,
+    Parametro = parameter
+  )
+kable(ljung_box_combined, caption = "Resultados del Test de Ljung-Box")
+
+# Homocedasticidad (varianza constante) de los residuos
+residuos_modelo_sarima_2 <- residuos_modelo_sarima^2
+grafico_residuos2 <- autoplot(residuos_modelo_sarima_2) +
+  labs(x = "Fecha", y = expression(epsilon[t]^2), title = "Cuadrado de los Residuos")
+acf_residuos2 <- ggAcf(residuos_modelo_sarima_2, type = "correlation") +
+  labs(x = "Rezago", y = "FAC", title = "FAC del Cuadrado de los Residuos")
+grid.arrange(grafico_residuos2, acf_residuos2)
+
+# Normalidad de los residuos
+# QQ-plot
+ggplot(data.frame(residuos = residuos_modelo_sarima), aes(sample = residuos)) +
+  stat_qq() +
+  stat_qq_line(color = "red") +
+  labs(x = "Cuantiles teóricos", y = "Cuantiles de la muestra", title = "QQ-plot de los Residuos")
+
+# Histograma
+ggplot(data.frame(residuos = residuos_modelo_sarima)) +
+  geom_histogram(aes(x = residuos, y = ..density..), bins = 10) +
+  stat_function(fun = dnorm, args = list(mean = mean(residuos_modelo_sarima), sd = sd(residuos_modelo_sarima)),
+                col = "red", size = 1) +
+  labs(x = "Residuos", y = "Densidad", title = "Histograma de los Residuos")
+
+# Tests de normalidad (Shapiro-Wilk y Jarque-Bera)
+shapiro_test_result <- shapiro.test(residuos_modelo_sarima) |> tidy()
+jarque_bera_test_result <- jarque.bera.test(residuos_modelo_sarima) |> tidy()
+
+normalidad_combined <- rbind(
+  shapiro_test_result %>%
+    mutate(Test = "Shapiro-Wilk", .before = method) %>%
+    select(Test, statistic, p.value, method),
+  jarque_bera_test_result %>%
+    mutate(Test = "Jarque-Bera", .before = method) %>%
+    select(Test, statistic, p.value, method)
+) %>%
+  rename(
+    Estadistico = statistic,
+    p_value = p.value,
+    Metodo = method
+  )
+kable(normalidad_combined, caption = "Resultados de los Tests de Normalidad")
+```
+
