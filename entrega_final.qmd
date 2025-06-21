@@ -38,16 +38,21 @@ library(broom)
 library(tseries)
 library(gtsummary)
 library(latex2exp) # Permite usar TeX() para incluir elementos LaTeX en ggplots.
+library(tsoutliers) # Permite chequear outliers mediante funciones.
 ```
 
 ```{r}
 df <- read_excel("series_bcu.xlsx" , sheet = "cantidad_personas_deuda_vigente") %>%
   select(fecha, cantidad_clientes, tipoinstitucion) %>%
   filter(tipoinstitucion == "Santander")
-cantidad_clientes_ts <- ts(df$cantidad_clientes, start = c(2018, 12), frequency = 12)
+cantidad_clientes_ts <- ts(df$cantidad_clientes, start = c(2018, 12), end = c(2024, 12), frequency = 12)
+cantidad_clientes_ts_completa <- ts(df$cantidad_clientes, start = c(2018, 12), frequency = 12) 
+# Se deja 3 observaciones para predicción
 ```
 
 Se dispone de una serie mensual con la cantidad de clientes con deuda vigente en el Banco Santander en el período Diciembre - 2018 a Marzo - 2025. 
+
+Se utiliza como entrenamiento los datos hasta 2024, y luego para predecir las 3 observaciones referidas a 2025.
 
 Una primera visualización de la serie permite identificar una clara tendencia creciente a lo largo del tiempo, especialmente a partir de 2020, con un aumento significativo hacia 2024. 
 
@@ -64,7 +69,7 @@ La variabilidad parece aumentar ligeramente con el nivel de la serie, lo que pod
 
 
 ```{r}
-autoplot(cantidad_clientes_ts) + 
+autoplot(cantidad_clientes_ts_completa) + 
   labs(x = "Fecha", y = "Cantidad 
        de personas", title = "Serie de Cantidad de Personas con Deuda en Santander") +
   theme_minimal() +
@@ -77,9 +82,9 @@ autoplot(cantidad_clientes_ts) +
 ```{r}
 ## series log
 cantidad_clientes_ts_log <- log(cantidad_clientes_ts)
-autoplot(cantidad_clientes_ts_log) + 
-  labs(x = "Fecha", y = "Cantidad 
-       de personas", title = "Serie de Cantidad de Personas con Deuda en Santander log") +
+autoplot(log(cantidad_clientes_ts_completa)) + 
+  labs(x = "Fecha", y = TeX(r"($\log($Cantidad$)$)"), title = "Serie del Logaritmo de la Cantidad de Personas
+       con Deuda en Santander") +
   theme_minimal() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
   theme(panel.grid.minor = element_blank())
@@ -155,7 +160,66 @@ Plot_Espectro_Suavizado
 
 Mediante el Periodograma Suavizado de la serie es posible respaldar la idea de que la misma presenta una tendencia que debería ser modelada. 
 
-En particular, las frecuencias más próximas a 0, y por ende las asociadas a ciclos de período próximo a infinito (el componente tendencial) explica la mayor parte de la variabilidad de la serie^[Corresponde resaltar, sin embargo, que la relación entre el área que se encuentra por debajo del Espectro/Periodograma y la Varianza de la serie se plantea para series estacionarias, propiedad que claramente no caracteriza a la serie en tratamiento.].  
+En particular, las frecuencias más próximas a 0, y por ende las asociadas a ciclos de período próximo a infinito (el componente tendencial) explica la mayor parte de la variabilidad de la serie^[Corresponde resaltar, sin embargo, que la relación entre el área que se encuentra por debajo del Espectro/Periodograma y la Varianza de la serie se plantea para series estacionarias, propiedad que claramente no caracteriza a la serie en tratamiento.].
+
+## Contraste de Raíces Unitarias
+
+A la hora de determinar si la tendencia puede ser modelada de forma determinística o si la misma es resultado de la presencia de raíces unitarias se lleva acabo los Contrastes de Dickey-Fuller aumentado y KPSS.
+
+### Dickey-Fuller
+
+En primera instancia se plantea el contraste seleccionando la cantidad de lags por medio de Criterios de Información (AIC y BIC) lo que resulta en la elección de $p = 1$. Con este valor, sin embargo, no se logra el comportamiento deseado de los residuos (que los mismos sean autocorrelacionados), por lo que se procedió a probar con varios valores de lags adicionales. Esto resultó en la elección de $p = 2$, con ambos coeficientes significativos a los niveles de significación usuales.
+
+```{r}
+DF_Serie_Original <- ur.df(y = cantidad_clientes_ts, type = "trend", lags = 2)
+plot(DF_Serie_Original)
+```
+
+A continuación se presentan los resultados de la regresión auxiliar del test y los estadísticos de prueba.
+
+```{r}
+# Tabla de regresión del test
+DF_Serie_Original@testreg |>
+  tbl_regression(intercept = TRUE) |>
+  modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
+```
+
+```{r}
+# Tabla de estadísticos y valores críticos
+df_results <- data.frame(
+  "Estadístico" = DF_Serie_Original@teststat[1,],
+  "VC 1%" = DF_Serie_Original@cval[,1],
+  "VC 5%" = DF_Serie_Original@cval[,2],
+  "VC 10%" = DF_Serie_Original@cval[,3]
+)
+rownames(df_results) <- c("tau3 (con tendencia)", "phi2", "phi3")
+
+kable(df_results, caption = "Resultados del Test de Dickey-Fuller Aumentado")
+```
+
+Del contraste de Dickey-Fuller aumentado se concluye que:
+
+- No se rechaza la Hipótesis Nula de que la Serie presente una raíz unitaria a ninguno de los niveles de significación planteados. De esta manera se tiene un respaldo para aplicar la Primera Diferencia Regular.
+
+- PREGUNTAR (en base a phi3): Se rechaza la Hipótesis Nula de que $b = 0, \gamma = 0$. Es decir, no hay raiz unitaria presente ni término de tendencia determinístico. Considerando el punto anterior esto sugiere que la serie no presenta una tendencia determinística que deba ser modelada.
+
+- PREGUNTAR (en base a phi2): No se rechaza la Hipótesis Nula de que $a = 0 , b = 0, \gamma = 0$.
+
+### KPSS
+
+En segunda instancia se plantea el Contraste KPSS, lo que resulta en que 
+
+```{r}
+KPSS_Serie_Original <- ur.kpss(y = cantidad_clientes_ts, type = "tau")
+
+kpss_results_df <- data.frame(
+  Item = c("Estadístico de Test", "Valor Crítico 10%", "Valor Crítico 5%", "Valor Crítico 2.5%", "Valor Crítico 1%"),
+  Valor = c(KPSS_Serie_Original@teststat, KPSS_Serie_Original@cval[1], KPSS_Serie_Original@cval[2], KPSS_Serie_Original@cval[3], KPSS_Serie_Original@cval[4])
+)
+kable(kpss_results_df, caption = "Resultados del Test KPSS (con tendencia)")
+```
+
+Como resultado se rechaza la Hipótesis Nula de que la Serie sea Integrada de Orden 0, lo que nuevamente da un respaldo para la Aplicación de la Primera Diferencia Regular en los datos.
 
 ## Serie Diferenciada de acuerdo a la Primera Diferencia Regular
 ```{r}
@@ -165,10 +229,32 @@ autoplot(diff_cantidad_clientes_ts) +
        Personas", 
        title = "Serie de Cantidad de Personas con Deuda en Santander",
        subtitle = "Primera Diferencia Regular") +
+  geom_hline(aes(yintercept = mean(diff_cantidad_clientes_ts)), colour = "red") +
   theme_minimal() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
   theme(panel.grid.minor = element_blank())
 ```
+
+La primera diferencia regular tiene como resultado una serie que adquiere un comportamiento más próximo al estacionario que la serie original. En principio es posible observar que la tendencia ha sido eliminada y la Media parece ser constante. No obstante, la Varianza no se comporta de forma constante.
+
+```{r}
+ggseasonplot(diff_cantidad_clientes_ts) +
+  labs(x = "Fecha", y = "Cantidad de 
+       Personas", 
+       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       subtitle = "Primera Diferencia Regular") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r}
+ggsubseriesplot(diff_cantidad_clientes_ts)
+```
+
+En el primer gráfico se puede observar que la serie se comporta de forma similar en todos los años disponibles, con la excepción de los años 2019 y 2024, en los meses de setiembre y octubre en particular. Esto puede ser un indicio de un posible outlier que requiera intervención.
+
+Del segundo gráfico se destaca los meses de marzo, junio, septiembre y diciembre, que presentan medias mayores en comparación al resto.
 
 ## FAC y FACP de la Serie Diferenciada
 ```{r}
@@ -189,33 +275,48 @@ diff_clientes_pacf <- ggAcf(diff_cantidad_clientes_ts, lag.max = 24, type = "par
 grid.arrange(diff_clientes_acf, diff_clientes_pacf)
 ```
 
+Al analizar la Función de Autocorrelación de la serie de Cantidad de Personas con Deuda en Santander una vez aplicada la Primera Diferencia Regular ($d=1$), se observa que, aunque la tendencia lineal ha sido eliminada (lo que se corrobora con los tests de Dickey-Fuller Aumentado y KPSS), persisten patrones de Autocorrelación significativos.
+
+Específicamente, se nota la presencia de coeficientes significativos en el rezago 3, en el rezago 6 y en el rezago 9, con una rápida aproximación a las bandas de confianza^[El coeficiente asociado al rezago 12 también es significativo, aunque como su magnitud es mayor a la del coeficiente del rezago 9 se decide, en principio, trabajar con los rezagos $k = 3, 6, 9$.]. 
+
+De esta manera se puede destacar que las observaciones se encuentran autocorrelacionadas con sus valores de 3, 6 y 9 meses atrás. Este comportamiento sugiere la utilización, en principio, de un SARIMA(3,1,0)(0,0,0), bajo el argumento de que la FAC se comporta como la que presenta un AR(3) con $\phi_1 = \phi_2 = 0$.
+
+En la FACP, en cambio, se observa la significación de los coeficientes asociados a los dos primeros retardos. En conjunto con la significación del $\hat{\rho}_1$ de la FAC es que se plantea la posibilidad de modelar la Estacionalidad por medio de un SARIMA(3,1,0)(0,1,1).
+
+## Dominio de Frecuencias: Análisis del Espectro de la Serie Diferenciada
+
 ```{r}
-ggseasonplot(diff_cantidad_clientes_ts) +
-  labs(x = "Fecha", y = "Cantidad de 
-       Personas", 
-       title = "Serie de Cantidad de Personas con Deuda en Santander",
-       subtitle = "Primera Diferencia Regular") +
+# Espectro de la Serie:
+Espectro_Serie_Diferenciada <- spectrum(diff_cantidad_clientes_ts, method = c("ar"), 
+                           freq = seq(from = 0, to = 0.5, length.out = 1000), plot = F) 
+# Se transforma las frecuencias para el intervalo [0,\pi]:
+Espectro_Serie_Diferenciada_Tibble <- tibble(Frecuencias = Espectro_Serie_Diferenciada$freq*pi/max(Espectro_Serie_Diferenciada$freq),
+                                Espectro = Espectro_Serie_Diferenciada$spec)
+# Plot:
+Plot_Espectro_Serie_Diferenciada_Suavizado <- ggplot(Espectro_Serie_Diferenciada_Tibble) +
+  geom_line(aes(Frecuencias, Espectro)) +
+  labs(x = TeX(r"($\omega$ (Frecuencias))"), 
+       y = TeX(r"($S_{X}$(\omega))"),
+       title = TeX(r"(Periodograma Suavizado de la Serie Diferenciada)"),
+       subtitle = "Método: AR(3)",
+       color = "") +
   theme_minimal() +
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
-  theme(panel.grid.minor = element_blank())
-```
-{r}
-```{r}
-ggmonthplot(cantidad_clientes_ts) +
-labs(x = "Meses",
-y = "Cantidad de Personas")
-
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  guides(color = guide_legend(position = "bottom"))
+Plot_Espectro_Serie_Diferenciada_Suavizado  
 ```
 
-Al analizar la Función de Autocorrelación de la serie de Cantidad de Personas con Deuda en Santander una vez aplicada la primera diferencia regular ($d=1$), se observa que, aunque la tendencia lineal ha sido eliminada (lo que se corrobora con los tests de Dickey-Fuller Aumentado y KPSS, CHEQUEAR UNA VEZ DADOS TEST DE RAICES UNITARIAS), persisten patrones de Autocorrelación significativos.
+El Espectro también muestra como la primera diferencia elimina el componente tendencial, al presentar bajos valores en las frecuencias más bajas. No obstante, realza el peso de las frecuencias que se encuentran en torno a $\omega_{\max} = 2.12$.
 
-Específicamente, se nota la presencia de coeficientes significativos en el rezago 3, en el rezago 6 y en el rezago 9, con una rápida aproximación a las bandas de confianza^[El coeficiente asociado al rezago 12 también es significativo, aunque como su magnitud es mayor a la del coeficiente del rezago 9 se decide, en principio, trabajar con los rezagos $k = 3, 6, 9$. Si bien 12 es múltiplo de 3 y por ende su significación puede estar ligada a la trimestralidad, no se debe descartar que pueda existir un componente de estacionalidad anual.]. 
+Considerando que $\text{per}(\omega_j) = \frac{2\pi}{\omega_j}$, entonces se tiene que $\text{per}(\omega_{\max}) \approx 3$, lo que quiere decir que la aplicación de la primera diferencia regular tuvo como resultado el incrementar la importancia de los ciclos que se repiten cada 3 meses a la hora de explicar la variabilidad de la serie.
 
-De esta manera se puede destacar que las observaciones se encuentran autocorrelacionadas con sus valores de 3, 6 y 9 meses atrás. Dado que estos rezagos son múltiplos de 3 es que se plantea modelar una estacionalidad de tipo trimestral. Para ello se aplicará una Primera Diferencia Estacional asociada al rezago $k = 3$.
+Sea $j$ el índice de la observación y $T = 75$ la cantidad de observaciones que componen a la serie. Entonces la frecuencia j-ésima viene dada por $\omega_j = \frac{2\pi j}{T}$ con período $\text{per}(\omega_j) = \frac{2\pi}{\omega_j} = \frac{T}{j}$. Considerando la frecuencia de espectro más alto identificada en el párrago anterior se obtiene que^[Dado $\omega_j = 2.12 = \frac{2\pi j}{75}$ y despejando $j$ se obtiene $j_{\max} \approx 25$.] $j_{\max} = 25$ con período $3$.
+
+PREGUNTA: El hecho de que los ciclos que más explican la varianza sean los de período 3 puede ir de la mano con lo que indicaba Lucca de que entran deudores a los 3 meses (2+1).
 
 ## Serie Diferenciada de acuerdo a la Primera Diferencia Regular y Primera Diferencia Estacional (Trimestral)
 ```{r}
-diff_estacional<- diff(diff_cantidad_clientes_ts, lag = 3)
+diff_estacional <- diff(diff_cantidad_clientes_ts, lag = 3)
 ```
 
 ## Gráfico de la Serie Diferenciada Estacional
@@ -254,7 +355,6 @@ grid.arrange(diff_estacional_acf, diff_estacional_pacf)
 diff_estacional_anual <- diff(diff_cantidad_clientes_ts, lag = 12)
 ```
 
-
 ## Gráfico de la Serie Diferenciada Estacional Anual
 ```{r}
 autoplot(diff_estacional_anual) +
@@ -286,529 +386,319 @@ diff_estacional_anual_pacf <- ggAcf(diff_estacional_anual, lag.max = 24, type = 
 grid.arrange(diff_estacional_anual_acf, diff_estacional_anual_pacf)
 ```
 
-# Modelos Propuesto
+# Modelos Propuestos
 
-## Exploración del Modelo ARIMA(3,1,0)
+## Exploración del Modelo SARIMA(10,1,0)(0,1,1)[12] con Intervención de Atípicos
 
-### Ajuste del Modelo ARIMA(3,1,0)
+Se propone un modelo `SARIMA(10,1,0)(0,1,1)[12]`. Dada la presencia de posibles valores atípicos, primero se realiza una detección y luego se incorporan como variables regresoras en el modelo final.
+
+### Detección y Tratamiento de Atípicos
+
 ```{r}
-modelo_arima_310 <- Arima(y = cantidad_clientes_ts,
-                     order = c(3, 1, 0),
-                     method = "ML")
+# Se utiliza tso para detectar outliers en un modelo base
+outlier_m1_detect <- tso(cantidad_clientes_ts, 
+                  cval = 2.5, 
+                  types = c("AO", "LS", "TC"), 
+                  tsmethod = "arima", 
+                  args.tsmethod = list(order = c(3, 1, 0), 
+                                       seasonal = list(order = c(0, 1, 1), period = 12), 
+                                       include.mean= FALSE))
 
-sarima_coef_p_values_df_310 <- coeftest(modelo_arima_310) |>
-  unclass() |>
-  as.data.frame() |>
-  tibble::rownames_to_column(var = "term") |>
-  dplyr::select(term, `Pr(>|z|)`) |>
-  dplyr::rename(p.value = `Pr(>|z|)`) 
+# kable(outlier_m1_detect$outliers, caption = "Atípicos Detectados para Modelo 1")
 
-tbl_regression(modelo_arima_310, exponentiate = FALSE) |>
-  modify_header(label = "**Término**") |>
-  modify_caption("Coeficientes del Modelo ARIMA(3,1,0)") |>
-  modify_table_body(~ .x |>
-                      dplyr::left_join(sarima_coef_p_values_df_310, by = "term")) |>
-  add_significance_stars()
+# Se crean los regresores para los atípicos identificados
+AO_2019_09_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts))
+TC_2019_12_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts))
+AO_2021_12_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 37), length(cantidad_clientes_ts))
+AO_2023_08_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts))
+TC_2023_10_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts))
+TC_2024_06_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts)) 
+
+xreg_m1 <- cbind(AO_2019_09_m1, TC_2019_12_m1, AO_2021_12_m1, AO_2023_08_m1, TC_2023_10_m1, TC_2024_06_m1)
 ```
 
-### Criterios de Información del Modelo ARIMA(3,1,0)
+### Ajuste del Modelo
+
 ```{r}
-model_arima_310_metrics <- data.frame(
-  AIC = modelo_arima_310$aic,
-  AICc = modelo_arima_310$aicc,
-  BIC = modelo_arima_310$bic
+modelo_1 <- Arima(y = cantidad_clientes_ts,
+                  order = c(10, 1, 0),
+                  seasonal = list(order = c(0,1,1), period = 12),
+                  fixed = c(0, NA, 0, 0, 0, 0, 0, NA, 0, NA, NA, NA, NA, NA, NA, NA, NA),
+                  xreg = xreg_m1,
+                  method = "ML")
+
+tbl_regression(modelo_1, exponentiate = FALSE) |>
+  modify_caption("Coeficientes del Modelo SARIMA(10,1,0)(0,1,1)[12]")
+```
+
+### Criterios de Información y Medidas de Error
+
+```{r}
+model_m1_metrics <- data.frame(
+  AIC = modelo_1$aic,
+  AICc = modelo_1$aicc,
+  BIC = modelo_1$bic
 )
-kable(model_arima_310_metrics, caption = "Criterios de Información del Modelo ARIMA(3,1,0)")
+kable(model_m1_metrics, caption = "Criterios de Información del Modelo 1")
+
+error_measures_m1 <- accuracy(modelo_1) %>% as.data.frame()
+kable(error_measures_m1, caption = "Medidas de Error del Modelo 1")
 ```
 
+### Diagnóstico de Residuos
 
-### Diagnóstico de los Residuos del Modelo ARIMA(3,1,0)
-
-#### FAC y FACP de los Residuos
 ```{r}
-residuos_arima_310 <- residuals(modelo_arima_310)
-residuos_arima_310_acf <- ggAcf(residuos_arima_310, lag.max = 24, type = "correlation") +
-  labs(x = "Rezago", y = "Autocorrelación", title = "FAC de los Residuos del ARIMA(3,1,0)")
-residuos_arima_310_pacf <- ggAcf(residuos_arima_310, lag.max = 24, type = "partial") +
-  labs(x = "Rezago", y = "Autocorrelación parcial", title = "FACP de los Residuos del ARIMA(3,1,0)")
-grid.arrange(residuos_arima_310_acf, residuos_arima_310_pacf)
-```
-
-## Exploración del Modelo SARIMA(3,1,0)(0,1,0)[12]
-
-Como los FAC y FACP de la serie con primera diferencia regular muestran una relación significativa en el rezago 12, se va a explorar un modelo SARIMA(3,1,0)(0,1,0)[12].
-
-### Ajuste del Modelo SARIMA(3,1,0)(0,1,0)[12]
-```{r}
-modelo_sarima_310_010_12 <- Arima(y = cantidad_clientes_ts,
-                     order = c(3, 1, 0),
-                     seasonal = list(order = c(0, 1, 0), period = 12),
-                     method = "ML")
-
-sarima_coef_p_values_df_310_010_12 <- coeftest(modelo_sarima_310_010_12) |>
-  unclass() |>
-  as.data.frame() |>
-  tibble::rownames_to_column(var = "term") |>
-  dplyr::select(term, `Pr(>|z|)`) |>
-  dplyr::rename(p.value = `Pr(>|z|)`) 
-
-tbl_regression(modelo_sarima_310_010_12, exponentiate = FALSE) |>
-  modify_header(label = "**Término**") |>
-  modify_caption("Coeficientes del Modelo SARIMA(3,1,0)(0,1,0)[12]") |>
-  modify_table_body(~ .x |>
-                      dplyr::left_join(sarima_coef_p_values_df_310_010_12, by = "term")) |>
-  add_significance_stars()
-```
-
-### Criterios de Información del Modelo SARIMA(3,1,0)(0,1,0)[12]
-```{r}
-model_sarima_310_010_12_metrics <- data.frame(
-  AIC = modelo_sarima_310_010_12$aic,
-  AICc = modelo_sarima_310_010_12$aicc,
-  BIC = modelo_sarima_310_010_12$bic
-)
-kable(model_sarima_310_010_12_metrics, caption = "Criterios de Información del Modelo SARIMA(3,1,0)(0,1,0)[12]")
-```
-
-### Medidas de Error del Modelo SARIMA(3,1,0)(0,1,0)[12]
-```{r}
-error_measures_sarima_310_010_12 <- accuracy(modelo_sarima_310_010_12) %>%
-  as.data.frame() %>%
-  tibble::rownames_to_column(var = "Conjunto") %>%
-  dplyr::rename(
-    RMSE = `RMSE`,
-    MAE = `MAE`,
-    MPE = `MPE`,
-    MAPE = `MAPE`,
-    MASE = `MASE`,
-    ACF1 = `ACF1`
-  )
-kable(error_measures_sarima_310_010_12, caption = "Medidas de Error del Modelo SARIMA(3,1,0)(0,1,0)[12] en el Conjunto de Entrenamiento")
-```
-
-### Pruebas de Raíz Unitaria en los Residuos del SARIMA(3,1,0)(0,1,0)[12]
-```{r}
-residuos_sarima_310_010_12 <- residuals(modelo_sarima_310_010_12)
-
-adf_result_sarima_310_010_12 <- adf.test(residuos_sarima_310_010_12, alternative = "stationary")
-adf_table_sarima_310_010_12 <- data.frame(
-  Test = "ADF Test",
-  Statistic = adf_result_sarima_310_010_12$statistic,
-  p_value = adf_result_sarima_310_010_12$p.value,
-  Method = adf_result_sarima_310_010_12$method,
-  row.names = NULL
-)
-
-kpss_result_sarima_310_010_12 <- kpss.test(residuos_sarima_310_010_12, null = "Level")
-kpss_table_sarima_310_010_12 <- data.frame(
-  Test = "KPSS Test",
-  Statistic = kpss_result_sarima_310_010_12$statistic,
-  p_value = kpss_result_sarima_310_010_12$p.value,
-  Method = kpss_result_sarima_310_010_12$method,
-  row.names = NULL
-)
-
-combined_tests_table_sarima_310_010_12 <- rbind(adf_table_sarima_310_010_12, kpss_table_sarima_310_010_12)
-
-kable(combined_tests_table_sarima_310_010_12, caption = "Resultados de las Pruebas de Raíz Unitaria (ADF y KPSS) en los Residuos del Modelo SARIMA(3,1,0)(0,1,0)[12]")
-```
-
-### Diagnóstico de los Residuos del Modelo SARIMA(3,1,0)(0,1,0)[12]
-
-#### Gráfico de Residuos
-```{r}
-autoplot(residuos_sarima_310_010_12) +
-  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo SARIMA(3,1,0)(0,1,0)[12]") +
+residuos_m1 <- residuals(modelo_1)
+autoplot(residuos_m1) +
+  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo 1") +
   geom_hline(yintercept = 0, color = "red")
-```
 
-#### FAC y FACP de los Residuos
-```{r}
-residuos_sarima_310_010_12_acf <- ggAcf(residuos_sarima_310_010_12, lag.max = 24, type = "correlation") +
-  labs(x = "Rezago", y = "Autocorrelación", title = "FAC de los Residuos del SARIMA(3,1,0)(0,1,0)[12]")
-residuos_sarima_310_010_12_pacf <- ggAcf(residuos_sarima_310_010_12, lag.max = 24, type = "partial") +
-  labs(x = "Rezago", y = "Autocorrelación parcial", title = "FACP de los Residuos del SARIMA(3,1,0)(0,1,0)[12]")
-grid.arrange(residuos_sarima_310_010_12_acf, residuos_sarima_310_010_12_pacf)
+residuos_m1_acf <- ggAcf(residuos_m1, lag.max = 24, type = "correlation") +
+  labs(title = "FAC de los Residuos del Modelo 1")
+residuos_m1_pacf <- ggAcf(residuos_m1, lag.max = 24, type = "partial") +
+  labs(title = "FACP de los Residuos del Modelo 1")
+grid.arrange(residuos_m1_acf, residuos_m1_pacf)
 ```
 
 #### Test de Ljung-Box
-```{r}
-ljung_box_sarima_310_010_12_10 <- Box.test(residuos_sarima_310_010_12, lag = 10, type = "Ljung-Box", fitdf = 3) |> tidy()
-ljung_box_sarima_310_010_12_20 <- Box.test(residuos_sarima_310_010_12, lag = 20, type = "Ljung-Box", fitdf = 3) |> tidy()
 
-ljung_box_sarima_310_010_12_combined <- rbind(ljung_box_sarima_310_010_12_10, ljung_box_sarima_310_010_12_20) %>%
-  mutate(Test = c("Ljung-Box (Lag 10)", "Ljung-Box (Lag 20)"), .before = method) %>%
-  select(Test, statistic, p.value, method, parameter) %>%
-  rename(
-    Estadistico = statistic,
-    p_value = p.value,
-    Metodo = method,
-    Parametro = parameter
-  )
-kable(ljung_box_sarima_310_010_12_combined, caption = "Resultados del Test de Ljung-Box para los Residuos del SARIMA(3,1,0)(0,1,0)[12]")
+```{r}
+ljung_box_df_m1 <- tibble()
+for(i in 3:24){
+  ljung_box_df_m1 <- rbind(ljung_box_df_m1, (Box.test(
+    residuos_m1, lag = i, type = "Ljung-Box", fitdf = 4) %>% tidy()))
+}
+kable(ljung_box_df_m1, caption = "Test de Ljung-Box para Residuos del Modelo 1 (Rezagos 3-24)")
 ```
 
-#### Análisis de Homocedasticidad
+#### Análisis de Homocedasticidad y Normalidad
+
 ```{r}
-residuos_sarima_310_010_12_2 <- residuos_sarima_310_010_12^2
-grafico_residuos_sarima_310_010_12_2 <- autoplot(residuos_sarima_310_010_12_2) +
-  labs(x = "Fecha", y = expression(epsilon[t]^2), title = "Cuadrado de los Residuos del SARIMA(3,1,0)(0,1,0)[12]")
-acf_residuos_sarima_310_010_12_2 <- ggAcf(residuos_sarima_310_010_12_2, type = "correlation") +
-  labs(x = "Rezago", y = "FAC", title = "FAC del Cuadrado de los Residuos del SARIMA(3,1,0)(0,1,0)[12]")
-grid.arrange(grafico_residuos_sarima_310_010_12_2, acf_residuos_sarima_310_010_12_2)
-```
+residuos_m1_sq <- residuos_m1^2
+autoplot(residuos_m1_sq) + labs(title = "Cuadrado de los Residuos del Modelo 1")
+ggAcf(residuos_m1_sq, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 1")
 
-#### Análisis de Normalidad
-```{r}
-ggplot(data.frame(residuos = residuos_sarima_310_010_12), aes(sample = residuos)) +
-  stat_qq() +
-  stat_qq_line(color = "red") +
-  labs(x = "Cuantiles teóricos", y = "Cuantiles de la muestra", title = "QQ-plot de los Residuos del SARIMA(3,1,0)(0,1,0)[12]")
+ggplot(data.frame(residuos = residuos_m1), aes(sample = residuos)) +
+  stat_qq() + stat_qq_line(color = "red") +
+  labs(title = "QQ-plot de Residuos del Modelo 1")
 
-ggplot(data.frame(residuos = residuos_sarima_310_010_12)) +
-  geom_histogram(aes(x = residuos, y = ..density..), bins = 10) +
-  stat_function(fun = dnorm, args = list(mean = mean(residuos_sarima_310_010_12), sd = sd(residuos_sarima_310_010_12)),
-                col = "red", size = 1) +
-  labs(x = "Residuos", y = "Densidad", title = "Histograma de los Residuos del SARIMA(3,1,0)(0,1,0)[12]")
-```
-
-#### Tests de Normalidad
-```{r}
-shapiro_test_result_sarima_310_010_12 <- shapiro.test(residuos_sarima_310_010_12) |> tidy()
-jarque_bera_test_result_sarima_310_010_12 <- jarque.bera.test(residuos_sarima_310_010_12) |> tidy()
-
-normalidad_sarima_310_010_12_combined <- rbind(
-  shapiro_test_result_sarima_310_010_12 %>%
-    mutate(Test = "Shapiro-Wilk", .before = method) %>%
-    select(Test, statistic, p.value, method),
-  jarque_bera_test_result_sarima_310_010_12 %>%
-    mutate(Test = "Jarque-Bera", .before = method) %>%
-    select(Test, statistic, p.value, method)
-) %>%
-  rename(
-    Estadistico = statistic,
-    p_value = p.value,
-    Metodo = method
-  )
-kable(normalidad_sarima_310_010_12_combined, caption = "Resultados de los Tests de Normalidad para los Residuos del SARIMA(3,1,0)(0,1,0)[12]")
-```
-
-## Exploración del Modelo SARIMA(0,1,0)(3,1,0)[3] con Componente Estacional Trimestral AR(3)
-
-Dado que se observaron picos en los meses de marzo, junio, septiembre y diciembre en el gráfico estacional, lo que sugiere una estacionalidad trimestral, exploraremos un modelo SARIMA que incorpore esta periodicidad. Específicamente, se propone un modelo SARIMA(0,1,0)(3,1,0)[3], que aplica una diferencia regular (d=1) y una diferencia estacional trimestral (D=1, período=3), además de incluir un componente autorregresivo estacional de orden 3 (P=3) para capturar la dependencia en los rezagos trimestrales.
-
-### Ajuste del Modelo SARIMA(0,1,0)(3,1,0)[3]
-```{r}
-modelo_sarima_010_310_3 <- Arima(y = cantidad_clientes_ts,
-                     order = c(0, 1, 0), # p, d, q para el componente no estacional
-                     seasonal = list(order = c(3, 1, 0), period = 3), # P, D, Q para el componente estacional, con período 3
-                     method = "ML")
-
-sarima_coef_p_values_df_010_310_3 <- coeftest(modelo_sarima_010_310_3) |>
-  unclass() |>
-  as.data.frame() |>
-  tibble::rownames_to_column(var = "term") |>
-  dplyr::select(term, `Pr(>|z|)`) |>
-  dplyr::rename(p.value = `Pr(>|z|)`)
-
-tbl_regression(modelo_sarima_010_310_3, exponentiate = FALSE) |>
-  modify_header(label = "**Término**") |>
-  modify_caption("Coeficientes del Modelo SARIMA(0,1,0)(3,1,0)[3]") |>
-  modify_table_body(~ .x |>
-                      dplyr::left_join(sarima_coef_p_values_df_010_310_3, by = "term")) |>
-  add_significance_stars()
-```
-
-### Criterios de Información del Modelo SARIMA(0,1,0)(3,1,0)[3]
-```{r}
-model_sarima_010_310_3_metrics <- data.frame(
-  AIC = modelo_sarima_010_310_3$aic,
-  AICc = modelo_sarima_010_310_3$aicc,
-  BIC = modelo_sarima_010_310_3$bic
+shapiro_test_m1 <- shapiro.test(residuos_m1) |> tidy()
+jarque_bera_test_m1 <- jarque.bera.test(residuos_m1) |> tidy()
+normalidad_m1 <- dplyr::bind_rows(
+  "Shapiro-Wilk" = shapiro_test_m1,
+  "Jarque-Bera" = jarque_bera_test_m1,
+  .id = "Test"
 )
-kable(model_sarima_010_310_3_metrics, caption = "Criterios de Información del Modelo SARIMA(0,1,0)(3,1,0)[3]")
+kable(normalidad_m1, caption = "Tests de Normalidad para Residuos del Modelo 1")
 ```
 
-### Medidas de Error del Modelo SARIMA(0,1,0)(3,1,0)[3]
+## Exploración del Modelo SARIMA(1,1,0)(1,1,0)[3] en Logaritmos con Intervención de Atípicos
+
+Para este modelo, se transforma la serie aplicando logaritmos para estabilizar la varianza. Luego, se ajusta un modelo `SARIMA(1,1,0)(1,1,0)[3]` con una periodicidad trimestral y se realiza un tratamiento de atípicos.
+
+### Transformación y Detección de Atípicos
+
 ```{r}
-error_measures_sarima_010_310_3 <- accuracy(modelo_sarima_010_310_3) %>%
-  as.data.frame() %>%
-  tibble::rownames_to_column(var = "Conjunto") %>%
-  dplyr::rename(
-    RMSE = `RMSE`,
-    MAE = `MAE`,
-    MPE = `MPE`,
-    MAPE = `MAPE`,
-    MASE = `MASE`,
-    ACF1 = `ACF1`
-  )
-kable(error_measures_sarima_010_310_3, caption = "Medidas de Error del Modelo SARIMA(0,1,0)(3,1,0)[3] en el Conjunto de Entrenamiento")
+cantidad_clientes_ts_log <- log(cantidad_clientes_ts)
+
+# Detección de atípicos en la serie logarítmica
+outlier_m2_detect <- tso(cantidad_clientes_ts_log, 
+                  cval = 2.5, 
+                  types = c("AO", "LS", "TC"), 
+                  tsmethod = "arima", 
+                  args.tsmethod = list(order = c(1, 1, 0),
+                                       seasonal = list(order = c(1,1,0), period = 3),
+                                       include.mean= FALSE))
+# kable(outlier_m2_detect$outliers, caption = "Atípicos Detectados para Modelo 2 (Log)")
+
+# Creación de regresores para atípicos
+AO_2019_09_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts_log))
+TC_2019_12_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts_log))
+TC_2021_12_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 37), length(cantidad_clientes_ts_log))
+LS_2023_03_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "LS", ind = 52), length(cantidad_clientes_ts_log))
+AO_2023_08_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts_log))
+TC_2023_10_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts_log))
+TC_2024_06_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts_log)) 
+
+xreg_m2 <- cbind(AO_2019_09_m2, TC_2019_12_m2, TC_2021_12_m2, LS_2023_03_m2, AO_2023_08_m2, TC_2023_10_m2, TC_2024_06_m2)
 ```
 
-### Pruebas de Raíz Unitaria en los Residuos del SARIMA(0,1,0)(3,1,0)[3]
-```{r}
-residuos_sarima_010_310_3 <- residuals(modelo_sarima_010_310_3)
+### Ajuste del Modelo
 
-adf_result_sarima_010_310_3 <- adf.test(residuos_sarima_010_310_3, alternative = "stationary")
-adf_table_sarima_010_310_3 <- data.frame(
-  Test = "ADF Test",
-  Statistic = adf_result_sarima_010_310_3$statistic,
-  p_value = adf_result_sarima_010_310_3$p.value,
-  Method = adf_result_sarima_010_310_3$method,
-  row.names = NULL
+```{r}
+modelo_2 <- Arima(y = cantidad_clientes_ts_log,
+                  order = c(1, 1, 0),
+                  seasonal = list(order = c(1,1,0), period = 3),
+                  xreg = xreg_m2,
+                  fixed = c(0, NA, NA, NA, NA, NA, NA, NA, NA),
+                  method = "ML")
+
+tbl_regression(modelo_2, exponentiate = FALSE) |>
+  modify_caption("Coeficientes del Modelo SARIMA(1,1,0)(1,1,0)[3] (Log)")
+```
+
+### Criterios de Información y Medidas de Error
+
+```{r}
+model_m2_metrics <- data.frame(
+  AIC = modelo_2$aic,
+  AICc = modelo_2$aicc,
+  BIC = modelo_2$bic
 )
+kable(model_m2_metrics, caption = "Criterios de Información del Modelo 2 (Log)")
 
-kpss_result_sarima_010_310_3 <- kpss.test(residuos_sarima_010_310_3, null = "Level")
-kpss_table_sarima_010_310_3 <- data.frame(
-  Test = "KPSS Test",
-  Statistic = kpss_result_sarima_010_310_3$statistic,
-  p_value = kpss_result_sarima_010_310_3$p.value,
-  Method = kpss_result_sarima_010_310_3$method,
-  row.names = NULL
-)
-
-combined_tests_table_sarima_010_310_3 <- rbind(adf_table_sarima_010_310_3, kpss_table_sarima_010_310_3)
-
-kable(combined_tests_table_sarima_010_310_3, caption = "Resultados de las Pruebas de Raíz Unitaria (ADF y KPSS) en los Residuos del Modelo SARIMA(0,1,0)(3,1,0)[3]")
+error_measures_m2 <- accuracy(modelo_2) %>% as.data.frame()
+kable(error_measures_m2, caption = "Medidas de Error del Modelo 2 (Log)")
 ```
 
-### Diagnóstico de los Residuos del Modelo SARIMA(0,1,0)(3,1,0)[3]
+### Diagnóstico de Residuos
 
-#### Gráfico de Residuos
 ```{r}
-autoplot(residuos_sarima_010_310_3) +
-  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo SARIMA(0,1,0)(3,1,0)[3]") +
+residuos_m2 <- residuals(modelo_2)
+autoplot(residuos_m2) +
+  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo 2 (Log)") +
   geom_hline(yintercept = 0, color = "red")
-```
 
-#### FAC y FACP de los Residuos
-```{r}
-residuos_sarima_010_310_3_acf <- ggAcf(residuos_sarima_010_310_3, lag.max = 24, type = "correlation") +
-  labs(x = "Rezago", y = "Autocorrelación", title = "FAC de los Residuos del SARIMA(0,1,0)(3,1,0)[3]")
-residuos_sarima_010_310_3_pacf <- ggAcf(residuos_sarima_010_310_3, lag.max = 24, type = "partial") +
-  labs(x = "Rezago", y = "Autocorrelación parcial", title = "FACP de los Residuos del SARIMA(0,1,0)(3,1,0)[3]")
-grid.arrange(residuos_sarima_010_310_3_acf, residuos_sarima_010_310_3_pacf)
+residuos_m2_acf <- ggAcf(residuos_m2, lag.max = 24, type = "correlation") +
+  labs(title = "FAC de los Residuos del Modelo 2 (Log)")
+residuos_m2_pacf <- ggAcf(residuos_m2, lag.max = 24, type = "partial") +
+  labs(title = "FACP de los Residuos del Modelo 2 (Log)")
+grid.arrange(residuos_m2_acf, residuos_m2_pacf)
 ```
 
 #### Test de Ljung-Box
-```{r}
-ljung_box_sarima_010_310_3_10 <- Box.test(residuos_sarima_010_310_3, lag = 10, type = "Ljung-Box", fitdf = 3) |> tidy()
-ljung_box_sarima_010_310_3_20 <- Box.test(residuos_sarima_010_310_3, lag = 20, type = "Ljung-Box", fitdf = 3) |> tidy()
 
-ljung_box_sarima_010_310_3_combined <- rbind(ljung_box_sarima_010_310_3_10, ljung_box_sarima_010_310_3_20) %>%
-  mutate(Test = c("Ljung-Box (Lag 10)", "Ljung-Box (Lag 20)"), .before = method) %>%
-  select(Test, statistic, p.value, method, parameter) %>%
-  rename(
-    Estadistico = statistic,
-    p_value = p.value,
-    Metodo = method,
-    Parametro = parameter
-  )
-kable(ljung_box_sarima_010_310_3_combined, caption = "Resultados del Test de Ljung-Box para los Residuos del SARIMA(0,1,0)(3,1,0)[3]")
+```{r}
+ljung_box_df_m2 <- tibble()
+for(i in 3:24){
+  ljung_box_df_m2 <- rbind(ljung_box_df_m2, (Box.test(
+    residuos_m2, lag = i, type = "Ljung-Box", fitdf = 1) %>% tidy()))
+}
+kable(ljung_box_df_m2, caption = "Test de Ljung-Box para Residuos del Modelo 2 (Log, Rezagos 3-24)")
 ```
 
-#### Análisis de Homocedasticidad
+#### Análisis de Homocedasticidad y Normalidad
+
 ```{r}
-residuos_sarima_010_310_3_2 <- residuos_sarima_010_310_3^2
-grafico_residuos_sarima_010_310_3_2 <- autoplot(residuos_sarima_010_310_3_2) +
-  labs(x = "Fecha", y = expression(epsilon[t]^2), title = "Cuadrado de los Residuos del SARIMA(0,1,0)(3,1,0)[3]")
-acf_residuos_sarima_010_310_3_2 <- ggAcf(residuos_sarima_010_310_3_2, type = "correlation") +
-  labs(x = "Rezago", y = "FAC", title = "FAC del Cuadrado de los Residuos del SARIMA(0,1,0)(3,1,0)[3]")
-grid.arrange(grafico_residuos_sarima_010_310_3_2, acf_residuos_sarima_010_310_3_2)
-```
+residuos_m2_sq <- residuos_m2^2
+autoplot(residuos_m2_sq) + labs(title = "Cuadrado de los Residuos del Modelo 2 (Log)")
+ggAcf(residuos_m2_sq, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 2 (Log)")
 
-#### Análisis de Normalidad
-```{r}
-ggplot(data.frame(residuos = residuos_sarima_010_310_3), aes(sample = residuos)) +
-  stat_qq() +
-  stat_qq_line(color = "red") +
-  labs(x = "Cuantiles teóricos", y = "Cuantiles de la muestra", title = "QQ-plot de los Residuos del SARIMA(0,1,0)(3,1,0)[3]")
+ggplot(data.frame(residuos = residuos_m2), aes(sample = residuos)) +
+  stat_qq() + stat_qq_line(color = "red") +
+  labs(title = "QQ-plot de Residuos del Modelo 2 (Log)")
 
-ggplot(data.frame(residuos = residuos_sarima_010_310_3)) +
-  geom_histogram(aes(x = residuos, y = ..density..), bins = 10) +
-  stat_function(fun = dnorm, args = list(mean = mean(residuos_sarima_010_310_3), sd = sd(residuos_sarima_010_310_3)),
-                col = "red", size = 1) +
-  labs(x = "Residuos", y = "Densidad", title = "Histograma de los Residuos del SARIMA(0,1,0)(3,1,0)[3]")
-```
-
-#### Tests de Normalidad
-```{r}
-shapiro_test_result_sarima_010_310_3 <- shapiro.test(residuos_sarima_010_310_3) |> tidy()
-jarque_bera_test_result_sarima_010_310_3 <- jarque.bera.test(residuos_sarima_010_310_3) |> tidy()
-
-normalidad_sarima_010_310_3_combined <- rbind(
-  shapiro_test_result_sarima_010_310_3 %>%
-    mutate(Test = "Shapiro-Wilk", .before = method) %>%
-    select(Test, statistic, p.value, method),
-  jarque_bera_test_result_sarima_010_310_3 %>%
-    mutate(Test = "Jarque-Bera", .before = method) %>%
-    select(Test, statistic, p.value, method)
-) %>%
-  rename(
-    Estadistico = statistic,
-    p_value = p.value,
-    Metodo = method
-  )
-kable(normalidad_sarima_010_310_3_combined, caption = "Resultados de los Tests de Normalidad para los Residuos del SARIMA(0,1,0)(3,1,0)[3]")
-```
-
-## Exploración del Modelo SARIMA(3,1,0)(3,1,0)[3] con Componentes Normales y Estacionales Trimestrales
-
-Basándonos en la posible relevancia de los componentes no estacionales y la fuerte evidencia de estacionalidad trimestral, se propone explorar un modelo SARIMA más completo: el SARIMA(3,1,0)(3,1,0)[3]. Este modelo incorpora una diferencia regular (d=1) para la tendencia, un componente autorregresivo no estacional de orden 3 (p=3), una diferencia estacional trimestral (D=1, período=3) y un componente autorregresivo estacional de orden 3 (P=3).
-
-### Ajuste del Modelo SARIMA(3,1,0)(3,1,0)[3]
-```{r}
-modelo_sarima_310_310_3 <- Arima(y = cantidad_clientes_ts,
-                     order = c(3, 1, 0), # p, d, q para el componente no estacional
-                     seasonal = list(order = c(3, 1, 0), period = 3), # P, D, Q para el componente estacional, con período 3
-                     method = "ML")
-
-sarima_coef_p_values_df_310_310_3 <- coeftest(modelo_sarima_310_310_3) |>
-  unclass() |>
-  as.data.frame() |>
-  tibble::rownames_to_column(var = "term") |>
-  dplyr::select(term, `Pr(>|z|)`) |>
-  dplyr::rename(p.value = `Pr(>|z|)`)
-
-tbl_regression(modelo_sarima_310_310_3, exponentiate = FALSE) |>
-  modify_header(label = "**Término**") |>
-  modify_caption("Coeficientes del Modelo SARIMA(3,1,0)(3,1,0)[3]") |>
-  modify_table_body(~ .x |>
-                      dplyr::left_join(sarima_coef_p_values_df_310_310_3, by = "term")) |>
-  add_significance_stars()
-```
-
-### Criterios de Información del Modelo SARIMA(3,1,0)(3,1,0)[3]
-```{r}
-model_sarima_310_310_3_metrics <- data.frame(
-  AIC = modelo_sarima_310_310_3$aic,
-  AICc = modelo_sarima_310_310_3$aicc,
-  BIC = modelo_sarima_310_310_3$bic
+shapiro_test_m2 <- shapiro.test(residuos_m2) |> tidy()
+jarque_bera_test_m2 <- jarque.bera.test(residuos_m2) |> tidy()
+normalidad_m2 <- dplyr::bind_rows(
+  "Shapiro-Wilk" = shapiro_test_m2,
+  "Jarque-Bera" = jarque_bera_test_m2,
+  .id = "Test"
 )
-kable(model_sarima_310_310_3_metrics, caption = "Criterios de Información del Modelo SARIMA(3,1,0)(3,1,0)[3]")
+kable(normalidad_m2, caption = "Tests de Normalidad para Residuos del Modelo 2 (Log)")
 ```
 
-### Medidas de Error del Modelo SARIMA(3,1,0)(3,1,0)[3]
+## Exploración del Modelo SARIMA(2,1,0)(0,1,1)[12] con Intervención de Atípicos
+
+Finalmente, se explora un modelo `SARIMA(2,1,0)(0,1,1)[12]`. Este modelo se especifica como un `(3,1,0)` con coeficientes fijados en cero para `ar1` y `ar3`, y también incluye el tratamiento de valores atípicos.
+
+### Detección y Tratamiento de Atípicos
+
 ```{r}
-error_measures_sarima_310_310_3 <- accuracy(modelo_sarima_310_310_3) %>%
-  as.data.frame() %>%
-  tibble::rownames_to_column(var = "Conjunto") %>%
-  dplyr::rename(
-    RMSE = `RMSE`,
-    MAE = `MAE`,
-    MPE = `MPE`,
-    MAPE = `MAPE`,
-    MASE = `MASE`,
-    ACF1 = `ACF1`
-  )
-kable(error_measures_sarima_310_310_3, caption = "Medidas de Error del Modelo SARIMA(3,1,0)(3,1,0)[3] en el Conjunto de Entrenamiento")
+# Detección de atípicos en un modelo base
+outlier_m3_detect <- tso(cantidad_clientes_ts, 
+                  cval = 2.5, 
+                  types = c("AO", "LS", "TC"), 
+                  tsmethod = "arima", 
+                  args.tsmethod = list(order = c(3, 1, 0), include.mean= FALSE))
+# kable(outlier_m3_detect$outliers, caption = "Atípicos Detectados para Modelo 3")
+
+# Creación de regresores para atípicos
+AO_2019_09_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts))
+TC_2019_12_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts))
+TC_2021_12_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 37), length(cantidad_clientes_ts))
+AO_2023_02_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 51), length(cantidad_clientes_ts))
+AO_2023_08_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts))
+TC_2023_10_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts))
+TC_2024_06_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts)) 
+
+xreg_m3 <- cbind(AO_2019_09_m3, TC_2019_12_m3, TC_2021_12_m3, AO_2023_02_m3, AO_2023_08_m3, TC_2023_10_m3, TC_2024_06_m3)
 ```
 
-### Pruebas de Raíz Unitaria en los Residuos del SARIMA(3,1,0)(3,1,0)[3]
-```{r}
-residuos_sarima_310_310_3 <- residuals(modelo_sarima_310_310_3)
+### Ajuste del Modelo
 
-adf_result_sarima_310_310_3 <- adf.test(residuos_sarima_310_310_3, alternative = "stationary")
-adf_table_sarima_310_310_3 <- data.frame(
-  Test = "ADF Test",
-  Statistic = adf_result_sarima_310_310_3$statistic,
-  p_value = adf_result_sarima_310_310_3$p.value,
-  Method = adf_result_sarima_310_310_3$method,
-  row.names = NULL
+```{r}
+modelo_3 <- Arima(y = cantidad_clientes_ts,
+                  order = c(3, 1, 0),
+                  seasonal = list(order = c(0,1,1), period = 12),
+                  fixed = c(0, NA, 0, NA, NA, NA, NA, NA, NA, NA, NA),
+                  xreg = xreg_m3,
+                  method = "ML")
+                  
+tbl_regression(modelo_3, exponentiate = FALSE) |>
+  modify_caption("Coeficientes del Modelo SARIMA(2,1,0)(0,1,1)[12]")
+```
+
+### Criterios de Información y Medidas de Error
+
+```{r}
+model_m3_metrics <- data.frame(
+  AIC = modelo_3$aic,
+  AICc = modelo_3$aicc,
+  BIC = modelo_3$bic
 )
+kable(model_m3_metrics, caption = "Criterios de Información del Modelo 3")
 
-kpss_result_sarima_310_310_3 <- kpss.test(residuos_sarima_310_310_3, null = "Level")
-kpss_table_sarima_310_310_3 <- data.frame(
-  Test = "KPSS Test",
-  Statistic = kpss_result_sarima_310_310_3$statistic,
-  p_value = kpss_result_sarima_310_310_3$p.value,
-  Method = kpss_result_sarima_310_310_3$method,
-  row.names = NULL
-)
-
-combined_tests_table_sarima_310_310_3 <- rbind(adf_table_sarima_310_310_3, kpss_table_sarima_310_310_3)
-
-kable(combined_tests_table_sarima_310_310_3, caption = "Resultados de las Pruebas de Raíz Unitaria (ADF y KPSS) en los Residuos del Modelo SARIMA(3,1,0)(3,1,0)[3]")
+error_measures_m3 <- accuracy(modelo_3) %>% as.data.frame()
+kable(error_measures_m3, caption = "Medidas de Error del Modelo 3")
 ```
 
-### Diagnóstico de los Residuos del Modelo SARIMA(3,1,0)(3,1,0)[3]
+### Diagnóstico de Residuos
 
-#### Gráfico de Residuos
 ```{r}
-autoplot(residuos_sarima_310_310_3) +
-  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo SARIMA(3,1,0)(3,1,0)[3]") +
+residuos_m3 <- residuals(modelo_3)
+autoplot(residuos_m3) +
+  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo 3") +
   geom_hline(yintercept = 0, color = "red")
-```
 
-#### FAC y FACP de los Residuos
-```{r}
-residuos_sarima_310_310_3_acf <- ggAcf(residuos_sarima_310_310_3, lag.max = 24, type = "correlation") +
-  labs(x = "Rezago", y = "Autocorrelación", title = "FAC de los Residuos del SARIMA(3,1,0)(3,1,0)[3]")
-residuos_sarima_310_310_3_pacf <- ggAcf(residuos_sarima_310_310_3, lag.max = 24, type = "partial") +
-  labs(x = "Rezago", y = "Autocorrelación parcial", title = "FACP de los Residuos del SARIMA(3,1,0)(3,1,0)[3]")
-grid.arrange(residuos_sarima_310_310_3_acf, residuos_sarima_310_310_3_pacf)
+residuos_m3_acf <- ggAcf(residuos_m3, lag.max = 24, type = "correlation") +
+  labs(title = "FAC de los Residuos del Modelo 3")
+residuos_m3_pacf <- ggAcf(residuos_m3, lag.max = 24, type = "partial") +
+  labs(title = "FACP de los Residuos del Modelo 3")
+grid.arrange(residuos_m3_acf, residuos_m3_pacf)
 ```
 
 #### Test de Ljung-Box
-```{r}
-ljung_box_sarima_310_310_3_10 <- Box.test(residuos_sarima_310_310_3, lag = 10, type = "Ljung-Box", fitdf = 3) |> tidy()
-ljung_box_sarima_310_310_3_20 <- Box.test(residuos_sarima_310_310_3, lag = 20, type = "Ljung-Box", fitdf = 3) |> tidy()
 
-ljung_box_sarima_310_310_3_combined <- rbind(ljung_box_sarima_310_310_3_10, ljung_box_sarima_310_310_3_20) %>%
-  mutate(Test = c("Ljung-Box (Lag 10)", "Ljung-Box (Lag 20)"), .before = method) %>%
-  select(Test, statistic, p.value, method, parameter) %>%
-  rename(
-    Estadistico = statistic,
-    p_value = p.value,
-    Metodo = method,
-    Parametro = parameter
-  )
-kable(ljung_box_sarima_310_310_3_combined, caption = "Resultados del Test de Ljung-Box para los Residuos del SARIMA(3,1,0)(3,1,0)[3]")
+```{r}
+ljung_box_df_m3 <- tibble()
+for(i in 3:24){
+  ljung_box_df_m3 <- rbind(ljung_box_df_m3, (Box.test(
+    residuos_m3, lag = i, type = "Ljung-Box", fitdf = 2) %>% tidy()))
+}
+kable(ljung_box_df_m3, caption = "Test de Ljung-Box para Residuos del Modelo 3 (Rezagos 3-24)")
 ```
 
-#### Análisis de Homocedasticidad
+#### Análisis de Homocedasticidad y Normalidad
+
 ```{r}
-residuos_sarima_310_310_3_2 <- residuos_sarima_310_310_3^2
-grafico_residuos_sarima_310_310_3_2 <- autoplot(residuos_sarima_310_310_3_2) +
-  labs(x = "Fecha", y = expression(epsilon[t]^2), title = "Cuadrado de los Residuos del SARIMA(3,1,0)(3,1,0)[3]")
-acf_residuos_sarima_310_310_3_2 <- ggAcf(residuos_sarima_310_310_3_2, type = "correlation") +
-  labs(x = "Rezago", y = "FAC", title = "FAC del Cuadrado de los Residuos del SARIMA(3,1,0)(3,1,0)[3]")
-grid.arrange(grafico_residuos_sarima_310_310_3_2, acf_residuos_sarima_310_310_3_2)
+residuos_m3_sq <- residuos_m3^2
+autoplot(residuos_m3_sq) + labs(title = "Cuadrado de los Residuos del Modelo 3")
+ggAcf(residuos_m3_sq, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 3")
+
+ggplot(data.frame(residuos = residuos_m3), aes(sample = residuos)) +
+  stat_qq() + stat_qq_line(color = "red") +
+  labs(title = "QQ-plot de Residuos del Modelo 3")
+
+shapiro_test_m3 <- shapiro.test(residuos_m3) |> tidy()
+jarque_bera_test_m3 <- jarque.bera.test(residuos_m3) |> tidy()
+normalidad_m3 <- dplyr::bind_rows(
+  "Shapiro-Wilk" = shapiro_test_m3,
+  "Jarque-Bera" = jarque_bera_test_m3,
+  .id = "Test"
+)
+kable(normalidad_m3, caption = "Tests de Normalidad para Residuos del Modelo 3")
 ```
 
-#### Análisis de Normalidad
-```{r}
-ggplot(data.frame(residuos = residuos_sarima_310_310_3), aes(sample = residuos)) +
-  stat_qq() +
-  stat_qq_line(color = "red") +
-  labs(x = "Cuantiles teóricos", y = "Cuantiles de la muestra", title = "QQ-plot de los Residuos del SARIMA(3,1,0)(3,1,0)[3]")
-
-ggplot(data.frame(residuos = residuos_sarima_310_310_3)) +
-  geom_histogram(aes(x = residuos, y = ..density..), bins = 10) +
-  stat_function(fun = dnorm, args = list(mean = mean(residuos_sarima_310_310_3), sd = sd(residuos_sarima_310_310_3)),
-                col = "red", size = 1) +
-  labs(x = "Residuos", y = "Densidad", title = "Histograma de los Residuos del SARIMA(3,1,0)(3,1,0)[3]")
-```
-
-#### Tests de Normalidad
-```{r}
-shapiro_test_result_sarima_310_310_3 <- shapiro.test(residuos_sarima_310_310_3) |> tidy()
-jarque_bera_test_result_sarima_310_310_3 <- jarque.bera.test(residuos_sarima_310_310_3) |> tidy()
-
-normalidad_sarima_310_310_3_combined <- rbind(
-  shapiro_test_result_sarima_310_310_3 %>%
-    mutate(Test = "Shapiro-Wilk", .before = method) %>%
-    select(Test, statistic, p.value, method),
-  jarque_bera_test_result_sarima_310_310_3 %>%
-    mutate(Test = "Jarque-Bera", .before = method) %>%
-    select(Test, statistic, p.value, method)
-) %>%
-  rename(
-    Estadistico = statistic,
-    p_value = p.value,
-    Metodo = method
-  )
-kable(normalidad_sarima_310_310_3_combined, caption = "Resultados de los Tests de Normalidad para los Residuos del SARIMA(3,1,0)(3,1,0)[3]")
-```
 
 ## Comparación de Modelos SARIMA
