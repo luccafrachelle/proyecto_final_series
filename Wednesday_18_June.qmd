@@ -173,7 +173,18 @@ En primera instancia se plantea el contraste seleccionando la cantidad de lags p
 ```{r}
 DF_Serie_Original <- ur.df(y = cantidad_clientes_ts, type = "trend", lags = 2)
 plot(DF_Serie_Original)
-summary(DF_Serie_Original)
+```
+
+```{r}
+DF_Serie_Original@testreg  %>% tbl_regression()
+```
+
+```{r}
+
+DF_Serie_Original@teststat   %>% as.data.frame()  %>% kable()
+
+  
+DF_Serie_Original@cval  %>% kable(caption = "Criterios de Información del Contraste de Dickey-Fuller")
 ```
 
 Del contraste de Dickey-Fuller aumentado se concluye que:
@@ -191,7 +202,10 @@ En segunda instancia se plantea el Contraste KPSS, lo que resulta en que
 ```{r}
 KPSS_Serie_Original <- ur.kpss(y = cantidad_clientes_ts, type = "tau")
 # plot(KPSS_Serie_Original)
-summary(KPSS_Serie_Original)
+KPSS_Serie_Original@teststat  %>% as.data.frame()  %>% mutate(estadistico = round(.,4))  %>% select(estadistico)  %>% kable()
+
+
+KPSS_Serie_Original@cval  %>% kable()
 ```
 
 Como resultado se rechaza la Hipótesis Nula de que la Serie sea Integrada de Orden 0, lo que nuevamente da un respaldo para la Aplicación de la Primera Diferencia Regular en los datos.

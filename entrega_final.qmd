@@ -386,49 +386,50 @@ diff_estacional_anual_pacf <- ggAcf(diff_estacional_anual, lag.max = 24, type = 
 grid.arrange(diff_estacional_anual_acf, diff_estacional_anual_pacf)
 ```
 
-# Modelos Propuestos
+# Modelos Finales Propuestos
 
-## Exploración del Modelo SARIMA(10,1,0)(0,1,1)[12] con Intervención de Atípicos
+A continuación, se presentan los dos modelos SARIMA finalistas seleccionados para la serie temporal. Cada uno ha sido ajustado con intervención de valores atípicos y sometido a un riguroso proceso de diagnóstico.
 
-Se propone un modelo `SARIMA(10,1,0)(0,1,1)[12]`. Dada la presencia de posibles valores atípicos, primero se realiza una detección y luego se incorporan como variables regresoras en el modelo final.
+## Modelo 1: SARIMA(6,1,0)(1,1,0)[3] con Intervención de Atípicos
+
+El primer modelo explora una estacionalidad trimestral (período 3).
 
 ### Detección y Tratamiento de Atípicos
 
 ```{r}
-# Se utiliza tso para detectar outliers en un modelo base
+# Detección de atípicos en la serie
 outlier_m1_detect <- tso(cantidad_clientes_ts, 
                   cval = 2.5, 
                   types = c("AO", "LS", "TC"), 
                   tsmethod = "arima", 
-                  args.tsmethod = list(order = c(3, 1, 0), 
-                                       seasonal = list(order = c(0, 1, 1), period = 12), 
+                  args.tsmethod = list(order = c(6, 1, 0),
+                                       seasonal = list(order = c(1,1,0), period = 3),
                                        include.mean= FALSE))
 
-# kable(outlier_m1_detect$outliers, caption = "Atípicos Detectados para Modelo 1")
-
-# Se crean los regresores para los atípicos identificados
+# Creación de regresores para atípicos
 AO_2019_09_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts))
 TC_2019_12_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts))
 AO_2021_12_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 37), length(cantidad_clientes_ts))
+AO_2023_02_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 51), length(cantidad_clientes_ts))
 AO_2023_08_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts))
 TC_2023_10_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts))
-TC_2024_06_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts)) 
+TC_2024_06_m1 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts))
 
-xreg_m1 <- cbind(AO_2019_09_m1, TC_2019_12_m1, AO_2021_12_m1, AO_2023_08_m1, TC_2023_10_m1, TC_2024_06_m1)
+xreg_m1 <- cbind(AO_2019_09_m1, TC_2019_12_m1, AO_2021_12_m1, AO_2023_02_m1, AO_2023_08_m1, TC_2023_10_m1, TC_2024_06_m1)
 ```
 
 ### Ajuste del Modelo
 
 ```{r}
 modelo_1 <- Arima(y = cantidad_clientes_ts,
-                  order = c(10, 1, 0),
-                  seasonal = list(order = c(0,1,1), period = 12),
-                  fixed = c(0, NA, 0, 0, 0, 0, 0, NA, 0, NA, NA, NA, NA, NA, NA, NA, NA),
+                  order = c(6, 1, 0),
+                  seasonal = list(order = c(1,1,0), period = 3),
                   xreg = xreg_m1,
+                  fixed = c(0, 0, NA, 0, 0, NA, NA, NA, NA, NA, NA, NA, NA, NA),
                   method = "ML")
 
 tbl_regression(modelo_1, exponentiate = FALSE) |>
-  modify_caption("Coeficientes del Modelo SARIMA(10,1,0)(0,1,1)[12]")
+  modify_caption("Coeficientes del Modelo SARIMA(6,1,0)(1,1,0)[3]")
 ```
 
 ### Criterios de Información y Medidas de Error
@@ -458,6 +459,13 @@ residuos_m1_acf <- ggAcf(residuos_m1, lag.max = 24, type = "correlation") +
 residuos_m1_pacf <- ggAcf(residuos_m1, lag.max = 24, type = "partial") +
   labs(title = "FACP de los Residuos del Modelo 1")
 grid.arrange(residuos_m1_acf, residuos_m1_pacf)
+
+# Residuos estandarizados
+residuos_estandarizados_m1 <- residuos_m1 / sqrt(modelo_1$sigma2)
+autoplot(residuos_estandarizados_m1) +
+  labs(x = "Año", y = "Residuos Estandarizados", title = "Residuos Estandarizados del Modelo 1") +
+  geom_hline(yintercept = 3, color = "red") +
+  geom_hline(yintercept = -3, color = "red")
 ```
 
 #### Test de Ljung-Box
@@ -466,7 +474,7 @@ grid.arrange(residuos_m1_acf, residuos_m1_pacf)
 ljung_box_df_m1 <- tibble()
 for(i in 3:24){
   ljung_box_df_m1 <- rbind(ljung_box_df_m1, (Box.test(
-    residuos_m1, lag = i, type = "Ljung-Box", fitdf = 4) %>% tidy()))
+    residuos_m1, lag = i, type = "Ljung-Box", fitdf = 3) %>% tidy()))
 }
 kable(ljung_box_df_m1, caption = "Test de Ljung-Box para Residuos del Modelo 1 (Rezagos 3-24)")
 ```
@@ -475,8 +483,9 @@ kable(ljung_box_df_m1, caption = "Test de Ljung-Box para Residuos del Modelo 1 (
 
 ```{r}
 residuos_m1_sq <- residuos_m1^2
-autoplot(residuos_m1_sq) + labs(title = "Cuadrado de los Residuos del Modelo 1")
-ggAcf(residuos_m1_sq, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 1")
+residuos_sq_acf_m1 <- ggAcf(residuos_m1_sq, lag.max=24, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 1")
+residuos_sq_pacf_m1 <- ggAcf(residuos_m1_sq, lag.max=24, type = "partial") + labs(title = "FACP del Cuadrado de los Residuos del Modelo 1")
+grid.arrange(residuos_sq_acf_m1, residuos_sq_pacf_m1)
 
 ggplot(data.frame(residuos = residuos_m1), aes(sample = residuos)) +
   stat_qq() + stat_qq_line(color = "red") +
@@ -492,49 +501,66 @@ normalidad_m1 <- dplyr::bind_rows(
 kable(normalidad_m1, caption = "Tests de Normalidad para Residuos del Modelo 1")
 ```
 
-## Exploración del Modelo SARIMA(1,1,0)(1,1,0)[3] en Logaritmos con Intervención de Atípicos
+### Predicción
 
-Para este modelo, se transforma la serie aplicando logaritmos para estabilizar la varianza. Luego, se ajusta un modelo `SARIMA(1,1,0)(1,1,0)[3]` con una periodicidad trimestral y se realiza un tratamiento de atípicos.
-
-### Transformación y Detección de Atípicos
+Se realiza una predicción para los próximos 3 meses.
 
 ```{r}
-cantidad_clientes_ts_log <- log(cantidad_clientes_ts)
+# Crear matriz de regresores futuros (ceros)
+nuevos_regresores_m1 <- matrix(0, nrow = 3, ncol = ncol(xreg_m1))
+colnames(nuevos_regresores_m1) <- colnames(xreg_m1)
 
-# Detección de atípicos en la serie logarítmica
-outlier_m2_detect <- tso(cantidad_clientes_ts_log, 
+# Realizar la predicción
+prediccion_m1 <- forecast(modelo_1, h = 3, xreg = nuevos_regresores_m1)
+
+# Graficar la serie original completa y la predicción
+autoplot(cantidad_clientes_ts_completa) +
+  autolayer(prediccion_m1, series = "Predicción") +
+  labs(title = "Predicción del Modelo SARIMA(6,1,0)(1,1,0)[3]",
+       x = "Fecha", y = "Cantidad de Clientes") +
+  theme_minimal()
+```
+
+## Modelo 2: SARIMA(2,1,0)(1,1,0)[12] con Intervención de Atípicos
+
+El segundo modelo explora una estacionalidad anual (período 12).
+
+### Detección y Tratamiento de Atípicos
+
+```{r}
+# Detección de atípicos en un modelo base
+outlier_m2_detect <- tso(cantidad_clientes_ts, 
                   cval = 2.5, 
                   types = c("AO", "LS", "TC"), 
                   tsmethod = "arima", 
-                  args.tsmethod = list(order = c(1, 1, 0),
-                                       seasonal = list(order = c(1,1,0), period = 3),
+                  args.tsmethod = list(order = c(2, 1, 0),
+                                       seasonal = list(order = c(1,1,0), period = 12),
                                        include.mean= FALSE))
-# kable(outlier_m2_detect$outliers, caption = "Atípicos Detectados para Modelo 2 (Log)")
 
 # Creación de regresores para atípicos
-AO_2019_09_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts_log))
-TC_2019_12_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts_log))
-TC_2021_12_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 37), length(cantidad_clientes_ts_log))
-LS_2023_03_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "LS", ind = 52), length(cantidad_clientes_ts_log))
-AO_2023_08_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts_log))
-TC_2023_10_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts_log))
-TC_2024_06_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts_log)) 
+AO_2019_09_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts))
+TC_2019_12_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts))
+TC_2021_12_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 37), length(cantidad_clientes_ts))
+AO_2023_02_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 51), length(cantidad_clientes_ts))
+AO_2023_08_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts))
+TC_2023_10_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts))
+TC_2024_06_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts)) 
 
-xreg_m2 <- cbind(AO_2019_09_m2, TC_2019_12_m2, TC_2021_12_m2, LS_2023_03_m2, AO_2023_08_m2, TC_2023_10_m2, TC_2024_06_m2)
+xreg_m2 <- cbind(AO_2019_09_m2, TC_2019_12_m2, TC_2021_12_m2, AO_2023_02_m2, AO_2023_08_m2, TC_2023_10_m2, TC_2024_06_m2)
 ```
 
 ### Ajuste del Modelo
 
 ```{r}
-modelo_2 <- Arima(y = cantidad_clientes_ts_log,
-                  order = c(1, 1, 0),
-                  seasonal = list(order = c(1,1,0), period = 3),
+modelo_2 <- Arima(y = cantidad_clientes_ts,
+                  order = c(2, 1, 0),
+                  seasonal = list(order = c(1,1,0), period = 12),
+                  fixed = c(0, NA, NA, NA, NA, NA, NA, NA, NA, NA),
                   xreg = xreg_m2,
-                  fixed = c(0, NA, NA, NA, NA, NA, NA, NA, NA),
                   method = "ML")
-
+                  
 tbl_regression(modelo_2, exponentiate = FALSE) |>
-  modify_caption("Coeficientes del Modelo SARIMA(1,1,0)(1,1,0)[3] (Log)")
+  modify_caption("Coeficientes del Modelo SARIMA(2,1,0)(1,1,0)[12]")
 ```
 
 ### Criterios de Información y Medidas de Error
@@ -545,10 +571,10 @@ model_m2_metrics <- data.frame(
   AICc = modelo_2$aicc,
   BIC = modelo_2$bic
 )
-kable(model_m2_metrics, caption = "Criterios de Información del Modelo 2 (Log)")
+kable(model_m2_metrics, caption = "Criterios de Información del Modelo 2")
 
 error_measures_m2 <- accuracy(modelo_2) %>% as.data.frame()
-kable(error_measures_m2, caption = "Medidas de Error del Modelo 2 (Log)")
+kable(error_measures_m2, caption = "Medidas de Error del Modelo 2")
 ```
 
 ### Diagnóstico de Residuos
@@ -556,14 +582,21 @@ kable(error_measures_m2, caption = "Medidas de Error del Modelo 2 (Log)")
 ```{r}
 residuos_m2 <- residuals(modelo_2)
 autoplot(residuos_m2) +
-  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo 2 (Log)") +
+  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo 2") +
   geom_hline(yintercept = 0, color = "red")
 
 residuos_m2_acf <- ggAcf(residuos_m2, lag.max = 24, type = "correlation") +
-  labs(title = "FAC de los Residuos del Modelo 2 (Log)")
+  labs(title = "FAC de los Residuos del Modelo 2")
 residuos_m2_pacf <- ggAcf(residuos_m2, lag.max = 24, type = "partial") +
-  labs(title = "FACP de los Residuos del Modelo 2 (Log)")
+  labs(title = "FACP de los Residuos del Modelo 2")
 grid.arrange(residuos_m2_acf, residuos_m2_pacf)
+
+# Residuos estandarizados
+residuos_estandarizados_m2 <- residuos_m2 / sqrt(modelo_2$sigma2)
+autoplot(residuos_estandarizados_m2) +
+  labs(x = "Año", y = "Residuos Estandarizados", title = "Residuos Estandarizados del Modelo 2") +
+  geom_hline(yintercept = 3, color = "red") +
+  geom_hline(yintercept = -3, color = "red")
 ```
 
 #### Test de Ljung-Box
@@ -572,21 +605,22 @@ grid.arrange(residuos_m2_acf, residuos_m2_pacf)
 ljung_box_df_m2 <- tibble()
 for(i in 3:24){
   ljung_box_df_m2 <- rbind(ljung_box_df_m2, (Box.test(
-    residuos_m2, lag = i, type = "Ljung-Box", fitdf = 1) %>% tidy()))
+    residuos_m2, lag = i, type = "Ljung-Box", fitdf = 2) %>% tidy()))
 }
-kable(ljung_box_df_m2, caption = "Test de Ljung-Box para Residuos del Modelo 2 (Log, Rezagos 3-24)")
+kable(ljung_box_df_m2, caption = "Test de Ljung-Box para Residuos del Modelo 2 (Rezagos 3-24)")
 ```
 
 #### Análisis de Homocedasticidad y Normalidad
 
 ```{r}
 residuos_m2_sq <- residuos_m2^2
-autoplot(residuos_m2_sq) + labs(title = "Cuadrado de los Residuos del Modelo 2 (Log)")
-ggAcf(residuos_m2_sq, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 2 (Log)")
+residuos_sq_acf_m2 <- ggAcf(residuos_m2_sq, lag.max=24, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 2")
+residuos_sq_pacf_m2 <- ggAcf(residuos_m2_sq, lag.max=24, type = "partial") + labs(title = "FACP del Cuadrado de los Residuos del Modelo 2")
+grid.arrange(residuos_sq_acf_m2, residuos_sq_pacf_m2)
 
 ggplot(data.frame(residuos = residuos_m2), aes(sample = residuos)) +
   stat_qq() + stat_qq_line(color = "red") +
-  labs(title = "QQ-plot de Residuos del Modelo 2 (Log)")
+  labs(title = "QQ-plot de Residuos del Modelo 2")
 
 shapiro_test_m2 <- shapiro.test(residuos_m2) |> tidy()
 jarque_bera_test_m2 <- jarque.bera.test(residuos_m2) |> tidy()
@@ -595,12 +629,32 @@ normalidad_m2 <- dplyr::bind_rows(
   "Jarque-Bera" = jarque_bera_test_m2,
   .id = "Test"
 )
-kable(normalidad_m2, caption = "Tests de Normalidad para Residuos del Modelo 2 (Log)")
+kable(normalidad_m2, caption = "Tests de Normalidad para Residuos del Modelo 2")
 ```
 
-## Exploración del Modelo SARIMA(2,1,0)(0,1,1)[12] con Intervención de Atípicos
+### Predicción
 
-Finalmente, se explora un modelo `SARIMA(2,1,0)(0,1,1)[12]`. Este modelo se especifica como un `(3,1,0)` con coeficientes fijados en cero para `ar1` y `ar3`, y también incluye el tratamiento de valores atípicos.
+Finalmente, se realiza una predicción para los próximos 3 meses.
+
+```{r}
+# Crear matriz de regresores futuros (ceros)
+nuevos_regresores_m2 <- matrix(0, nrow = 3, ncol = ncol(xreg_m2))
+colnames(nuevos_regresores_m2) <- colnames(xreg_m2)
+
+# Realizar la predicción
+prediccion_m2 <- forecast(modelo_2, h = 3, xreg = nuevos_regresores_m2)
+
+# Graficar la serie original completa y la predicción
+autoplot(cantidad_clientes_ts_completa) +
+  autolayer(prediccion_m2, series = "Predicción") +
+  labs(title = "Predicción del Modelo SARIMA(2,1,0)(1,1,0)[12]",
+       x = "Fecha", y = "Cantidad de Clientes") +
+  theme_minimal()
+```
+
+## Modelo 3: SARIMA(10,1,0)(0,1,1)[12] con Intervención de Atípicos
+
+El tercer modelo finalista vuelve a explorar la estacionalidad anual, pero con una estructura autorregresiva de orden mayor.
 
 ### Detección y Tratamiento de Atípicos
 
@@ -610,33 +664,33 @@ outlier_m3_detect <- tso(cantidad_clientes_ts,
                   cval = 2.5, 
                   types = c("AO", "LS", "TC"), 
                   tsmethod = "arima", 
-                  args.tsmethod = list(order = c(3, 1, 0), include.mean= FALSE))
-# kable(outlier_m3_detect$outliers, caption = "Atípicos Detectados para Modelo 3")
+                  args.tsmethod = list(order = c(3, 1, 0),
+                                       seasonal = list(order = c(0,1,1), period = 12),
+                                       include.mean= FALSE))
 
 # Creación de regresores para atípicos
 AO_2019_09_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts))
 TC_2019_12_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts))
-TC_2021_12_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 37), length(cantidad_clientes_ts))
-AO_2023_02_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 51), length(cantidad_clientes_ts))
+AO_2021_12_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 37), length(cantidad_clientes_ts))
 AO_2023_08_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts))
 TC_2023_10_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts))
 TC_2024_06_m3 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts)) 
 
-xreg_m3 <- cbind(AO_2019_09_m3, TC_2019_12_m3, TC_2021_12_m3, AO_2023_02_m3, AO_2023_08_m3, TC_2023_10_m3, TC_2024_06_m3)
+xreg_m3 <- cbind(AO_2019_09_m3, TC_2019_12_m3, AO_2021_12_m3, AO_2023_08_m3, TC_2023_10_m3, TC_2024_06_m3)
 ```
 
 ### Ajuste del Modelo
 
 ```{r}
 modelo_3 <- Arima(y = cantidad_clientes_ts,
-                  order = c(3, 1, 0),
+                  order = c(10, 1, 0),
                   seasonal = list(order = c(0,1,1), period = 12),
-                  fixed = c(0, NA, 0, NA, NA, NA, NA, NA, NA, NA, NA),
+                  fixed = c(0, NA, 0, 0, 0, 0, 0, NA, 0, NA, NA, NA, NA, NA, NA, NA, NA),
                   xreg = xreg_m3,
                   method = "ML")
                   
 tbl_regression(modelo_3, exponentiate = FALSE) |>
-  modify_caption("Coeficientes del Modelo SARIMA(2,1,0)(0,1,1)[12]")
+  modify_caption("Coeficientes del Modelo SARIMA(10,1,0)(0,1,1)[12]")
 ```
 
 ### Criterios de Información y Medidas de Error
@@ -666,6 +720,13 @@ residuos_m3_acf <- ggAcf(residuos_m3, lag.max = 24, type = "correlation") +
 residuos_m3_pacf <- ggAcf(residuos_m3, lag.max = 24, type = "partial") +
   labs(title = "FACP de los Residuos del Modelo 3")
 grid.arrange(residuos_m3_acf, residuos_m3_pacf)
+
+# Residuos estandarizados
+residuos_estandarizados_m3 <- residuos_m3 / sqrt(modelo_3$sigma2)
+autoplot(residuos_estandarizados_m3) +
+  labs(x = "Año", y = "Residuos Estandarizados", title = "Residuos Estandarizados del Modelo 3") +
+  geom_hline(yintercept = 3, color = "red") +
+  geom_hline(yintercept = -3, color = "red")
 ```
 
 #### Test de Ljung-Box
@@ -674,7 +735,7 @@ grid.arrange(residuos_m3_acf, residuos_m3_pacf)
 ljung_box_df_m3 <- tibble()
 for(i in 3:24){
   ljung_box_df_m3 <- rbind(ljung_box_df_m3, (Box.test(
-    residuos_m3, lag = i, type = "Ljung-Box", fitdf = 2) %>% tidy()))
+    residuos_m3, lag = i, type = "Ljung-Box", fitdf = 4) %>% tidy()))
 }
 kable(ljung_box_df_m3, caption = "Test de Ljung-Box para Residuos del Modelo 3 (Rezagos 3-24)")
 ```
@@ -683,8 +744,9 @@ kable(ljung_box_df_m3, caption = "Test de Ljung-Box para Residuos del Modelo 3 (
 
 ```{r}
 residuos_m3_sq <- residuos_m3^2
-autoplot(residuos_m3_sq) + labs(title = "Cuadrado de los Residuos del Modelo 3")
-ggAcf(residuos_m3_sq, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 3")
+residuos_sq_acf_m3 <- ggAcf(residuos_m3_sq, lag.max=24, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo 3")
+residuos_sq_pacf_m3 <- ggAcf(residuos_m3_sq, lag.max=24, type = "partial") + labs(title = "FACP del Cuadrado de los Residuos del Modelo 3")
+grid.arrange(residuos_sq_acf_m3, residuos_sq_pacf_m3)
 
 ggplot(data.frame(residuos = residuos_m3), aes(sample = residuos)) +
   stat_qq() + stat_qq_line(color = "red") +
@@ -700,5 +762,24 @@ normalidad_m3 <- dplyr::bind_rows(
 kable(normalidad_m3, caption = "Tests de Normalidad para Residuos del Modelo 3")
 ```
 
+### Predicción
+
+Finalmente, se realiza una predicción para los próximos 3 meses.
+
+```{r}
+# Crear matriz de regresores futuros (ceros)
+nuevos_regresores_m3 <- matrix(0, nrow = 3, ncol = ncol(xreg_m3))
+colnames(nuevos_regresores_m3) <- colnames(xreg_m3)
+
+# Realizar la predicción
+prediccion_m3 <- forecast(modelo_3, h = 3, xreg = nuevos_regresores_m3)
+
+# Graficar la serie original completa y la predicción
+autoplot(cantidad_clientes_ts_completa) +
+  autolayer(prediccion_m3, series = "Predicción") +
+  labs(title = "Predicción del Modelo SARIMA(10,1,0)(0,1,1)[12]",
+       x = "Fecha", y = "Cantidad de Clientes") +
+  theme_minimal()
+```
 
 ## Comparación de Modelos SARIMA
