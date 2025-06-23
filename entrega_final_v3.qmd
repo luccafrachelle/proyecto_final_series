@@ -42,7 +42,7 @@ library(tsoutliers) # Permite chequear outliers mediante funciones.
 ```
 
 ```{r}
-df <- read_excel("series_bcu.xlsx" , sheet = "cantidad_personas_deuda_vigente") %>%
+df <- read_excel("data/series_bcu.xlsx" , sheet = "cantidad_personas_deuda_vigente") %>%
   select(fecha, cantidad_clientes, tipoinstitucion) %>%
   filter(tipoinstitucion == "Santander")
 cantidad_clientes_ts <- ts(df$cantidad_clientes, start = c(2018, 12), end = c(2024, 12), frequency = 12)
@@ -62,7 +62,7 @@ Falta:
 
 El presente trabajo se desarrollará en base a la serie mensual de la cantidad de clientes con deuda vigente en el Banco Santander durante el período de Diciembre 2018 a Marzo 2025, proveniente de la central de riesgos que se informa al Banco Central del Uruguay (BCU). La serie se encuentra constituida, entonces, por 76 observaciones. 
 
-Dada la baja cantidad de observaciones disponibles se utilizará, a los efectos de identificar el modelo que logre representar el comportamiento de la serie, los datos de hasta Diciembre del 2024 inclusive (73 observaciones en total). Las tres observaciones restantes, referidas al año corriente, serán utilizadas a efectos de contrastar el desempeño de la predicción.
+Dada la baja cantidad de observaciones disponibles se utilizará, a los efectos de identificar el modelo que logre representar el comportamiento de la serie, los datos de hasta Diciembre del 2024 inclusive (73 observaciones en total). Las tres observaciones restantes, referidas al año corriente, serán utilizadas con el fin de contrastar el desempeño de la predicción.
 
 # Análisis Inicial
 
@@ -669,6 +669,8 @@ No se rechaza la Hipótesis Nula de que los residuos tengan una media distinta d
 
 # Predicción
 
+## Enero, Febrero y Marzo de 2025
+
 Se realiza predicciones para los meses de Enero, Febrero y Marzo de 2025, a efectos de contrastarla con las tres observaciones que no se utilizaron a la hora de ajustar el modelo.
 
 ```{r}
@@ -789,6 +791,30 @@ kable(Tabla_ICs_4, caption = "Intervalos de Confianza al 96% de los Primeros 3 M
 
 Se puede apreciar que se captura al 50% de confianza el valor real de la serie en los meses de Enero y Marzo de 2025. Sin embargo, el valor de Febrero de 2025 requiere utilizar un intervalo de amplitud mayor asociado a una confianza aproximada del 96%.
 
+**Métricas sobre los errores de predicción**
+
+Obtenemos algunas medidas de los errores de predicción sobre el conjunto de testeo. Para ello los errores son tomados como la diferencia en cada punto de la serie entre el conjunto de testeo (los valores reales) y los valores predichos, es decir, $(x - \hat{x})$.
+
+```{r}
+test_clientes <- window(cantidad_clientes_ts_completa, start = c(2025,1))
+acc1 <- round(accuracy(Predicciones_Modelo_2_Tabla_ICs, test_clientes), 4)[1,1:7]
+acc1 <- as.data.frame(t(acc1))  # transponer para que las métricas queden como columnas
+kable(acc1, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
+```
+
+
+Un ME positivo implica que el modelo en promedio subestima. Sin embargo, si observamos el MPE, vemos que los errores se compensan lo suficiente como para que dicha subestimación sea considerablemente pequeña, ya que un PME del 7,6% es relativamente bajo.
+
+El MAE presenta un error en términos absolutos que en comparación con el rango de valores de la serie no parece tan alto. Sin embargo, el MAPE, el cual muestra errores en valores absolutos, pero a diferencia del MAE, en términos relativos, presenta es considerablemente alto. El modelo comete en promedio un 44% de error relativo respecto al valor real.
+
+EL RMSE, el cual penaliza errores grandes, si bien es más alto que el MAE, en proporción a la media de la serie representa solo un 0,6%. Es decir que no se presentan errores extremadamente altos en las predicciones.
+
+El MASE es una métrica que compara los errores de predicción con los de un modelo naive de 1 lag. En este caso nuestro modelo predice ampliamente mejor que uno naive, ya que un valor del 7,2% es extremadamente bajo.
+
+Por último, el ACF1, una medida de la correlación entre errores a un rezago, muestra que existe poca correlación entre los errores, lo cual coincide con los tests realizados anteriormente.
+
+## 2024 y 2025
+
 También se realiza predicciones para el 2024 y los primeros tres meses de 2025, utilizando el mismo modelo propuesto pero entrenándolo con las observaciones disponibles hasta diciembre de 2023.
 
 ```{r}
@@ -851,6 +877,18 @@ ggplot(Predicciones_Dentro_Muestra_Tibble_m2) +
 
 De forma similar al modelo anterior se nota una diferencia en la pendiente de la predicción puntual y la realidad. Nuevamente, la primera tiende a ser cada vez menor que la segunda a medida que aumenta el horizonte de predicción. 
 
+**Métricas sobre los errores de predicción**
+
+```{r}
+acc2 <- round(accuracy(Pred_Final_Test_m2, test_clientes), 4)[1,1:7]
+acc2 <- as.data.frame(t(acc2))  # transponer para que las métricas queden como columnas
+kable(acc2, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
+```
+
+Los errores de predicción para este período presentan métricas muy similares a las de las predicciones para únicamente los 3 primeros meses de 2025. Solo el ME, en conjunto con el MPE en términos relativos, disminuyó notablemente. Esto implica que los errores en promedio se compensan.
+
+## A partir de Junio de 2024
+
 Considerando una muestra de entrenamiento con límite en Junio de 2024, tal que se incorpore el cambio transitorio identificado para ese mes, se obtiene los siguientes resultados para un horizonte de predicción hasta Marzo de 2025:
 
 ```{r}
@@ -879,9 +917,10 @@ Pred_Final_Test_m2_2 <- forecast(Modelo_Final_train_m2_2, h = n,
 # accuracy(Pred_Final_Test_m2_2, test_clientes)
 
 autoplot(object = Pred_Final_Test_m2_2) +
-  labs(x = "Fecha",
-       y = "Deudores",
-       title = "") +
+  labs(title = "Cantidad de Clientes con Deuda en Santander: 
+       Predicción a partir de Junio de 2024",
+       subtitle = TeX(r"(Modelo SARIMA$(2,1,0)(1,1,0)$)"),
+       x = "Fecha", y = "") +
   theme_minimal()
 
 Predicciones_Dentro_Muestra_Tibble_m2_2 <- tibble(
@@ -906,6 +945,18 @@ ggplot(Predicciones_Dentro_Muestra_Tibble_m2_2) +
   theme_minimal() +
   guides(color = guide_legend(position = "bottom")) 
 ```
+
+La predicción para los siguientes meses resulta bastante precisa. Es solo a partir de Diciembre del 2024 que se observa una discrepancia relativamente mayor con la serie empírica con tendencia a subestimar.
+
+**Métricas sobre los errores de predicción**
+
+```{r}
+acc3 <- round(accuracy(Pred_Final_Test_m2_2, test_clientes), 4)[1,1:7]
+acc3 <- as.data.frame(t(acc3))  # transponer para que las métricas queden como columnas
+kable(acc3, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
+```
+
+Para este último período de predicción, las métricas sobre los errores de predicción también son muy parecidas a los anteriores dos períodos. Se aprecia una leve mejora en el RMSE, la cual podría deberse a que no tomamos en cuenta el efecto de Junio de 2024 dentro de la muestra de entrenamiento para realizar las predicciones.
 
 # Comentarios Finales
 
