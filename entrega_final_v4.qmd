@@ -832,21 +832,24 @@ Obtenemos algunas medidas de los errores de predicción sobre el conjunto de tes
 
 ```{r}
 test_clientes <- window(cantidad_clientes_ts_completa, start = c(2025,1))
-acc1 <- round(accuracy(Predicciones_Modelo_2_Tabla_ICs, test_clientes), 4)[1,1:7]
-acc1 <- as.data.frame(t(acc1))  # transponer para que las métricas queden como columnas
+acc1 <- round(accuracy(Predicciones_Modelo_2, test_clientes), 4)
 kable(acc1, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
 ```
 
 
-Un ME positivo implica que el modelo en promedio subestima. Sin embargo, si observamos el MPE, vemos que los errores se compensan lo suficiente como para que dicha subestimación sea considerablemente pequeña, ya que un PME del 7,6% es relativamente bajo.
+Un ME positivo implica que el modelo en promedio subestima y si observamos el MPE vemos con qué porcentaje. En el caso de las predicciones a un pas sobre el conjunto de entrenamiento, los errores se compensan lo suficiente generando que dicha subestimación sea considerablemente pequeña, con un PME de solo el 7,6%. Por otro lado, para los errores de predicción sobre el conjunto de testeo, la subestimación es relativamente grande, en promedio de un 66%.
 
-El MAE presenta un error en términos absolutos que en comparación con el rango de valores de la serie no parece tan alto. Sin embargo, el MAPE, el cual muestra errores en valores absolutos, pero a diferencia del MAE, en términos relativos, presenta es considerablemente alto. El modelo comete en promedio un 44% de error relativo respecto al valor real.
+El MAE presenta un error en términos absolutos que, para ambos casos, en comparación con el rango de valores de la serie no parece ser tan alto. Sin embargo, el MAPE, el cual muestra errores en valores absolutos, pero a diferencia del MAE, en términos relativos, es considerablemente alto. El modelo comete en promedio un 44% de error relativo respecto al valor real para el caso del set de training y un 66% para el caso del set de testeo.
 
-EL RMSE, el cual penaliza errores grandes, si bien es más alto que el MAE, en proporción a la media de la serie representa solo un 0,6%. Es decir que no se presentan errores extremadamente altos en las predicciones.
+Es preciso señalar que los valores de ME y MAE son prácticamente los mismos para el set de testeo, esto solo se puede dar si en todos los puntos predichos se subestimó el valor real, como se ve en gráficos anteriores. 
 
-El MASE es una métrica que compara los errores de predicción con los de un modelo naive de 1 lag. En este caso nuestro modelo predice ampliamente mejor que uno naive, ya que un valor del 7,2% es extremadamente bajo.
+El RMSE, el cual penaliza errores grandes, si bien es más alto que el MAE para ambos casos, en proporción a la media de la serie representa solo un 0,6% y un 1% respectivamente. Es decir que no se presentan errores extremadamente grandes en las predicciones.
 
-Por último, el ACF1, una medida de la correlación entre errores a un rezago, muestra que existe poca correlación entre los errores, lo cual coincide con los tests realizados anteriormente.
+El MASE es una métrica que compara los errores de predicción con los de un modelo naive de 1 lag. En este caso nuestro modelo predice ampliamente mejor que uno naive, ya que los valores 7,2%, para el set de training, y 13,5%, para el set de testeo, son extremadamente bajos.
+
+Por su ado, el ACF1, una medida de la correlación entre errores a un rezago, muestra que existe poca correlación entre los errores del set de training, mientras que para el set de testeo parece existir sierta correlación negativa.
+
+Por último, la métrica de Theil's U (*Theil’s Inequality Coefficient*) para el set de testeo es mayor que 1, esto sugiere que las predicciones son inexactas.
 
 ## 2024 y 2025
 
@@ -915,12 +918,25 @@ De forma similar al modelo anterior se nota una diferencia en la pendiente de la
 **Métricas sobre los errores de predicción**
 
 ```{r}
-acc2 <- round(accuracy(Pred_Final_Test_m2, test_clientes), 4)[1,1:7]
-acc2 <- as.data.frame(t(acc2))  # transponer para que las métricas queden como columnas
+acc2 <- round(accuracy(Pred_Final_Test_m2, test_clientes), 4)
 kable(acc2, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
 ```
 
-Los errores de predicción para este período presentan métricas muy similares a las de las predicciones para únicamente los 3 primeros meses de 2025. Solo el ME, en conjunto con el MPE en términos relativos, disminuyó notablemente. Esto implica que los errores en promedio se compensan.
+Para las predicciones a un paso sobre el set de training, los errores en este período presentan métricas muy similares a las de las predicciones del período anterior. Solo el ME, en conjunto con el MPE en términos relativos, disminuyó notablemente. Esto implica que los errores en promedio se compensan aún más.
+
+En el caso del set de testeo, las métricas de los errores en general empeoraron, lo cual es esperable tomando en cuenta que el horizonte de predicción es ahora considerablemente más lejano. 
+
+Según el ME y el MPE, se subestims ampliamente los valores de la serie empírica. Esto se puede observar también en gráficos anteriores.
+
+El RMSE y el MAE también aumentaron notablemente, si bien en comparación con la escala no parecen ser tan altos y en proporción a la media solo representan un 8%. 
+
+Analizándolo en términos relativos, el MAPE implica un error de predicción muy alto.
+
+Por su parte, el MASE, al ser mayor que 1, sugiere que un modelo naive predice mejor que el modelo propuesto.
+
+El ACF1 mejora en comparación al período anterir, aún así, sigue existiendo una correlación negativa entre los errores.
+
+Finalmente, el Theil's U muestra un valor considerablemente alejado de 0, entendiéndose que las predicciones presentan errores bastante altos.
 
 ## A partir de Junio de 2024
 
@@ -986,12 +1002,21 @@ La predicción para los siguientes meses resulta bastante precisa. Es solo a par
 **Métricas sobre los errores de predicción**
 
 ```{r}
-acc3 <- round(accuracy(Pred_Final_Test_m2_2, test_clientes), 4)[1,1:7]
-acc3 <- as.data.frame(t(acc3))  # transponer para que las métricas queden como columnas
+acc3 <- round(accuracy(Pred_Final_Test_m2_2, test_clientes), 4)
 kable(acc3, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
 ```
 
-Para este último período de predicción, las métricas sobre los errores de predicción también son muy parecidas a los anteriores dos períodos. Se aprecia una leve mejora en el RMSE, la cual podría deberse a que no tomamos en cuenta el efecto de Junio de 2024 dentro de la muestra de entrenamiento para realizar las predicciones.
+Para este último período de predicción, las métricas para el conjunto de training también son muy parecidas a los anteriores dos períodos.
+
+Por otro lado, para el set de testeo, las métricas son en general mejores que las del anterior período tomado, pero relativamente peores que las del primero. Esto es de esperarse nuevamente debido al horizonte de predicción.
+
+La subestimación según el ME y el MPE sigue siendo alta.
+
+El RMSE no es tan grande respecto a la escala de la serie, es decir que no parece haber errores inusualmente altos.
+
+Segpun el MASE, el modelo propuesto predice mejor en comparación con un modelo naive.
+
+Por último, el MAE, MAPE, ACF1 y Theil's U sugieren erores de predicción bastante altos.
 
 # Descomposición de la Serie
 
@@ -1000,7 +1025,7 @@ Mediante la función `x13` (asociada al método estadístico del mismo nombre) d
 Como resultado se obtuvo la descomposición de la serie, lo que permitió computar una serie desestacionalizada, que se muestra a continuación:
 
 ```{r}
-load("./Data/Salidas_Script_Componentes.Rdata")
+load("Componentes/Salidas_Script_Componentes.Rdata")
 grid.arrange(Plot_1_Serie_Original, Plot_2_Serie_Desestacionalizada, Plot_4_SA_T, nrow = 3)
 ```
 
