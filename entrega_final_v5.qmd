@@ -1,0 +1,1080 @@
+---
+title: "Entrega Final - Series Cronológicas"
+subtitle: "Facultad de Ciencias Económicas y Administración - 2025 - UDeLaR"
+author: "Leandro Berrueta, Lucca Frachelle, Cecilia Waksman"
+date: today
+warning: false
+message: false
+echo: false
+format: 
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    theme:
+      light: flatly
+      dark: darkly
+    fig-align: center
+    toc-float: true
+embed-resources: true
+toc-location: right
+toc-title: 'Contenido'
+---
+
+```{r}
+# Paquetes:
+library(forecast)
+library(tidyverse)
+library(tseries)
+library(forecast)
+library(urca)
+library(lmtest)
+library(gridExtra)
+library(seasonal)
+library(readxl)
+library(knitr)
+library(kableExtra)
+library(broom)
+library(tseries)
+library(gtsummary)
+library(latex2exp) # Permite usar TeX() para incluir elementos LaTeX en ggplots.
+library(tsoutliers) # Permite chequear outliers mediante funciones.
+
+# Función para agregar p-valores a modelos Arima para gtsummary
+tidy_arima <- function(x, ...) {
+  # tidy the model
+  ret <- broom::tidy(x, ...)
+  
+  # calculate p-values
+  ret$p.value <- 2 * pnorm(abs(ret$estimate / ret$std.error), lower.tail = FALSE)
+  
+  # return tidied tibble
+  ret
+}
+```
+
+```{r}
+df <- read_excel("data/series_bcu.xlsx" , sheet = "cantidad_personas_deuda_vigente") %>%
+  select(fecha, cantidad_clientes, tipoinstitucion) %>%
+  filter(tipoinstitucion == "Santander")
+cantidad_clientes_ts <- ts(df$cantidad_clientes, start = c(2018, 12), end = c(2024, 12), frequency = 12)
+cantidad_clientes_ts_completa <- ts(df$cantidad_clientes, start = c(2018, 12), frequency = 12) 
+# Se deja 3 observaciones para predicción
+```
+
+# Resumen Ejecutivo
+
+Un resumen para hacer al final.
+
+Falta:
+
+- Interpretación de los indicadores de predicción. Comentarios finales sobre los modelos en base a ello.
+
+# Introducción
+
+El presente trabajo se desarrollará en base a la serie mensual de la cantidad de clientes con deuda vigente en el Banco Santander durante el período de Diciembre 2018 a Marzo 2025, proveniente de la central de riesgos que se informa al Banco Central del Uruguay (BCU). La serie se encuentra constituida, entonces, por 76 observaciones. 
+
+Dada la baja cantidad de observaciones disponibles se utilizará, a los efectos de identificar el modelo que logre representar el comportamiento de la serie, los datos de hasta Diciembre del 2024 inclusive (73 observaciones en total). Las tres observaciones restantes, referidas al año corriente, serán utilizadas con el fin de contrastar el desempeño de la predicción.
+
+# Análisis Inicial
+
+## Gráfico de la Serie Temporal
+
+```{r}
+autoplot(cantidad_clientes_ts_completa) + 
+  labs(x = "Fecha", y = "Cantidad 
+       de personas", title = "Serie de Cantidad de Personas con Deuda en Santander") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank()) 
+
+```
+
+
+```{r}
+## series log
+cantidad_clientes_ts_log <- log(cantidad_clientes_ts)
+autoplot(log(cantidad_clientes_ts_completa)) + 
+  labs(x = "Fecha", y = TeX(r"($\log($Cantidad$)$)"), title = "Serie del Logaritmo de la Cantidad de Personas
+       con Deuda en Santander") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+
+```
+
+Una primera visualización de la serie permite identificar una clara tendencia creciente a lo largo del tiempo, especialmente a partir de mediados del año 2020, con un aumento significativo a fines de 2023 de cara al año 2024. 
+
+En principio no se logra reconocer un comportamiento estacional evidente o un patrón repetitivo a intervalos fijos en la serie. 
+
+A su vez, una inspección inicial de la serie sugiere que la misma podría presentar observaciones atípicas, en particular a fines de 2019, fines de 2021 y fines de 2023.
+
+La variabilidad parece aumentar ligeramente con el nivel de la serie, lo que podría sugerir la necesidad de aplicar una transformación logarítmica a modo de homogeneizar la Varianza de la serie. El uso de dicha transformación se evaluará más adelante tomando como insumo el comportamiento del cuadrado de los residuos de los modelos propuestos.
+
+## Estadísticas Descriptivas
+```{r}
+cantidad_clientes_ts %>%  
+  summary() %>%  
+  enframe(name = "Estadística", value = "Valor") |> 
+  kable(caption = "Estadísticas Descriptivas de la Serie de Cantidad de Personas con Deuda") 
+```
+
+# Identificación del Modelo
+
+## Análisis de la Serie Original en el Dominio del Tiempo
+
+### Análisis en el Dominio del Tiempo: Función de Autocorrelación (FAC)
+
+```{r}
+clientes_acf <- ggAcf(cantidad_clientes_ts, lag.max = 24, type = "correlation") + 
+  labs(x = "k (Rezago)", 
+       y = TeX(r"($\hat{\rho_{k}}$)"), title = "Función de Autocorrelación (FAC)") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+
+clientes_acf
+```
+
+Se observa que la Función de Aucorrelación (FAC) decrece lentamente y de forma persistente, con coeficientes de autocorrelación significativos que se mantienen altos incluso en los mayores rezagos y que, por ende, no se comportan de acuerdo al decaimiento exponencial que caracteriza a las series débilmente estacionarias^[En el presente trabajo se utilizará como sinónimos "estacionariedad en sentido débil", "estacionariedad en covarianza" y "estacionariedad", al igual que se hizo durante el desarrollo del curso.]. Esto es un fuerte indicio de que la serie no es estacionaria. 
+
+Además, las autocorrelaciones significativas en rezagos altos sugieren la presencia de una tendencia, detalle claramente observable al inspeccionar el gráfico de la serie.
+
+### Análisis en el Dominio del Tiempo: Función de Autocorrelación Parcial (FACP)
+
+```{r}
+clientes_pacf <- ggAcf(cantidad_clientes_ts, lag.max = 24, type = "partial") + 
+    labs(x = "k (Rezago)", 
+       y = TeX(r"($\hat{\alpha_{k}}$)"), title = "Función de Autocorrelación Parcial (FACP)") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+
+clientes_pacf
+```
+
+La Función de Autocorrelación Parcial (FACP) muestra un coeficiente significativo en el primer rezago y luego decae rápidamente, no habiendo otro rezago que resulte significativo al nivel de significación usual del 5%. 
+
+Esto podría sugerir un componente $\text{AR}(1)$ si la serie fuese estacionaria. Sin embargo, dada la FAC planteada anteriormente así como los comentarios realizados en base a esta y al gráfico de la propia serie, se concluye de este primer análisis del Dominio del Tiempo en la posibilidad de aplicar, al menos, una primera diferencia regular a la misma.
+
+### Análisis en el Dominio de Frecuencias de la Serie Original
+
+```{r}
+# Periodograma de la Serie:
+Espectro_Serie <- spectrum(cantidad_clientes_ts, method = c("pgram"), 
+                           freq = seq(from = 0, to = 0.5, length.out = 1000), plot = FALSE) 
+# Se transforma las frecuencias para el intervalo [0,\pi]:
+Espectro_Serie_Tibble <- tibble(Frecuencias = Espectro_Serie$freq*pi/max(Espectro_Serie$freq),
+                                Espectro = Espectro_Serie$spec)
+# Plot:
+Plot_Espectro <- ggplot(Espectro_Serie_Tibble) +
+  geom_line(aes(Frecuencias, Espectro)) +
+  labs(x = TeX(r"($\omega$ (Frecuencias))"), 
+       y = TeX(r"($S_{X}$(\omega))"),
+       title = TeX(r"(Periodograma de la Serie)"),
+       color = "") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  guides(color = guide_legend(position = "bottom"))
+
+# Espectro de la Serie:
+Espectro_Serie <- spectrum(cantidad_clientes_ts, method = c("ar"), 
+                           freq = seq(from = 0, to = 0.5, length.out = 1000), plot = FALSE) 
+# Se transforma las frecuencias para el intervalo [0,\pi]:
+Espectro_Serie_Tibble <- tibble(Frecuencias = Espectro_Serie$freq*pi/max(Espectro_Serie$freq),
+                                Espectro = Espectro_Serie$spec)
+# Plot:
+Plot_Espectro_Suavizado <- ggplot(Espectro_Serie_Tibble) +
+  geom_line(aes(Frecuencias, Espectro)) +
+  labs(x = TeX(r"($\omega$ (Frecuencias))"), 
+       y = TeX(r"($S_{X}$(\omega))"),
+       title = TeX(r"(Periodograma Suavizado de la Serie)"),
+       subtitle = "Método: AR(1)",
+       color = "") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  guides(color = guide_legend(position = "bottom"))
+grid.arrange(Plot_Espectro, Plot_Espectro_Suavizado, nrow = 2)
+```
+
+Mediante el Periodograma Suavizado de la serie es posible respaldar la idea de que la misma presenta una tendencia que debería ser modelada. 
+
+En particular, las frecuencias más próximas a $0$, y por ende las asociadas a ciclos de período próximo a infinito (el componente tendencial) explican la mayor parte de la variabilidad de la serie^[Corresponde resaltar, sin embargo, que la relación entre el área que se encuentra por debajo del Espectro/Periodograma y la Varianza de la serie se plantea para series estacionarias, propiedad que claramente no caracteriza a la serie en análisis.].
+
+### Contrastes de Raíces Unitarias
+
+A la hora de determinar si la tendencia puede ser modelada de forma determinística o si la misma es resultado de la presencia de raíces unitarias que motiven la aplicación de una Primera Diferencia Regular se lleva acabo los Contrastes de Dickey-Fuller Aumentado (DF o DFA) y Kwiatkowski-Phillips-Schmidt-Shin (KPSS).
+
+#### Dickey-Fuller Aumentado
+
+En primera instancia se planteó el contraste seleccionando la cantidad de rezagos por medio de Criterios de Información (AIC y BIC) lo que resulta en la elección de $p = 1$. Con este valor, sin embargo, no se logró el comportamiento deseado de los residuos (que los mismos no se encuentren autocorrelacionados), lo que motivó el ensayo con varios valores de lags adicionales. Esto resultó en la elección de $p = 2$, con ambos coeficientes significativos a los niveles de significación usuales.
+
+```{r}
+DF_Serie_Original <- ur.df(y = cantidad_clientes_ts, type = "trend", lags = 2)
+plot(DF_Serie_Original)
+```
+
+A continuación se presentan los resultados de la regresión auxiliar del test y los estadísticos de prueba:
+
+```{r}
+# Tabla de regresión del test
+DF_Serie_Original@testreg |>
+  tbl_regression(intercept = TRUE) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
+  modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
+```
+
+```{r}
+# Tabla de estadísticos y valores críticos
+df_results <- data.frame(
+  "Estadístico" = DF_Serie_Original@teststat[1,],
+  "VC 1%" = DF_Serie_Original@cval[,1],
+  "VC 5%" = DF_Serie_Original@cval[,2],
+  "VC 10%" = DF_Serie_Original@cval[,3]
+)
+rownames(df_results) <- c("tau3 (con tendencia)", "phi2", "phi3")
+
+kable(df_results, caption = "Resultados del Test de Dickey-Fuller Aumentado")
+```
+
+Del contraste de Dickey-Fuller aumentado se concluye que:
+
+- No se rechaza la Hipótesis Nula de que la Serie presente una raíz unitaria a ninguno de los niveles de significación planteados. De esta manera se tiene un respaldo estadístico para aplicar la Primera Diferencia Regular.
+
+### KPSS
+
+En segunda instancia se plantea el Contraste KPSS. Los resultados se muestran a continuación: 
+
+```{r}
+KPSS_Serie_Original <- ur.kpss(y = cantidad_clientes_ts, type = "tau")
+
+kpss_results_df <- data.frame(
+  Item = c("Estadístico de Test", "Valor Crítico 10%", "Valor Crítico 5%", "Valor Crítico 2.5%", "Valor Crítico 1%"),
+  Valor = c(KPSS_Serie_Original@teststat, KPSS_Serie_Original@cval[1], KPSS_Serie_Original@cval[2], KPSS_Serie_Original@cval[3], KPSS_Serie_Original@cval[4])
+)
+kable(kpss_results_df, caption = "Resultados del Test KPSS (con tendencia)")
+```
+
+Como resultado se rechaza la Hipótesis Nula de que la Serie sea Integrada de Orden $0$, lo que nuevamente da un respaldo estadístico para la aplicación de la Primera Diferencia Regular en los datos.
+
+## Serie Diferenciada de acuerdo a la Primera Diferencia Regular
+
+```{r}
+diff_cantidad_clientes_ts <- diff(cantidad_clientes_ts, differences = 1)
+autoplot(diff_cantidad_clientes_ts) + 
+  labs(x = "Fecha", y = "Cantidad de 
+       Personas", 
+       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       subtitle = "Primera Diferencia Regular") +
+  geom_hline(aes(yintercept = mean(diff_cantidad_clientes_ts)), colour = "red") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+```
+
+La Primera Diferencia Regular tiene como resultado una serie que adquiere un comportamiento más próximo al estacionario que la serie original. 
+
+En principio es posible observar que la tendencia ha sido eliminada y la Media parece ser constante. No obstante, la Varianza no se comporta de igual forma, lo que sugiere, nuevamente, la posible presencia de datos atípicos, particularmente a fines de los años 2019, 2021 y 2023.
+
+Considerando los años por separado, como se plantea en el gráfico siguiente, es posible observar que la serie diferenciada se comporta de forma similar en todos los años disponibles, con la excepción de los años 2019 y 2023, en los meses de Septiembre y Octubre en particular. Esto es un indicio de posibles outliers que requieran intervención.
+
+```{r}
+ggseasonplot(diff_cantidad_clientes_ts) +
+  labs(x = "Fecha", y = "Cantidad de 
+       Personas", 
+       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       subtitle = "Primera Diferencia Regular",
+       color = "Año") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+```
+
+Separando los datos de acuerdo a los meses se desprende que los meses de Marzo, Junio, Septiembre y Diciembre presentan medias mayores en comparación al resto de los meses.
+
+```{r}
+ggsubseriesplot(diff_cantidad_clientes_ts) +
+  labs(x = "Mes", y = "Cantidad de 
+       Personas", 
+       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       subtitle = "Primera Diferencia Regular") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+```
+
+### FAC y FACP de la Serie Diferenciada
+
+```{r}
+diff_clientes_acf <- ggAcf(diff_cantidad_clientes_ts, lag.max = 24, type = "correlation") +
+      labs(x = "k (Rezago)", 
+       y = TeX(r"($\hat{\rho_{k}}$)"), title = "FAC de la Serie Diferenciada") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+
+diff_clientes_pacf <- ggAcf(diff_cantidad_clientes_ts, lag.max = 24, type = "partial") +
+    labs(x = "k (Rezago)", 
+       y = TeX(r"($\hat{\alpha_{k}}$)"), title = "FACP de la Serie Diferenciada") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+
+grid.arrange(diff_clientes_acf, diff_clientes_pacf)
+```
+
+Al analizar la Función de Autocorrelación de la serie una vez aplicada la Primera Diferencia Regular ($d=1$), se observa que el lento decaimiento de los coeficientes de autocorrelación fue subsanado. No obstante, persisten patrones significativos.
+
+Específicamente, se nota la presencia de coeficientes significativos en los rezagos $3, \ 6, \ 9$, con una rápida aproximación a las bandas de confianza. 
+
+Los coeficientes asociados a los rezagos $12$ y $24$ también resultan significativos, lo que constituye un indicio de que la serie presente un componente estacional.
+
+De esta manera se puede destacar que las observaciones se encuentran autocorrelacionadas con sus valores de 3, 6 y 9 meses atrás. Este comportamiento sugiere la utilización, en principio, de un modelo $\text{SARIMA}(3,1,0)(P,D,Q)$, bajo el argumento de que la FAC se comporta como la que presenta un $\text{AR}(3)$ con $\phi_1 = \phi_2 = 0$.
+
+### Dominio de Frecuencias: Análisis del Espectro de la Serie Diferenciada
+
+```{r}
+# Periodograma de la Serie:
+Espectro_Serie_Diferenciada <- spectrum(diff_cantidad_clientes_ts, method = c("pgram"), 
+                           freq = seq(from = 0, to = 0.5, length.out = 1000), plot = F) 
+# Se transforma las frecuencias para el intervalo [0,\pi]:
+Espectro_Serie_Diferenciada_Tibble <- tibble(Frecuencias = Espectro_Serie_Diferenciada$freq*pi/max(Espectro_Serie_Diferenciada$freq),
+                                Espectro = Espectro_Serie_Diferenciada$spec)
+# Plot:
+Plot_Espectro_Serie_Diferenciada <- ggplot(Espectro_Serie_Diferenciada_Tibble) +
+  geom_line(aes(Frecuencias, Espectro)) +
+  labs(x = TeX(r"($\omega$ (Frecuencias))"), 
+       y = TeX(r"($S_{X}$(\omega))"),
+       title = TeX(r"(Periodograma de la Serie Diferenciada)"),
+       color = "") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  guides(color = guide_legend(position = "bottom"))
+
+# Espectro de la Serie:
+Espectro_Serie_Diferenciada <- spectrum(diff_cantidad_clientes_ts, method = c("ar"), 
+                           freq = seq(from = 0, to = 0.5, length.out = 1000), plot = F) 
+# Se transforma las frecuencias para el intervalo [0,\pi]:
+Espectro_Serie_Diferenciada_Tibble <- tibble(Frecuencias = Espectro_Serie_Diferenciada$freq*pi/max(Espectro_Serie_Diferenciada$freq),
+                                Espectro = Espectro_Serie_Diferenciada$spec)
+# Plot:
+Plot_Espectro_Serie_Diferenciada_Suavizado <- ggplot(Espectro_Serie_Diferenciada_Tibble) +
+  geom_line(aes(Frecuencias, Espectro)) +
+  labs(x = TeX(r"($\omega$ (Frecuencias))"), 
+       y = TeX(r"($S_{X}$(\omega))"),
+       title = TeX(r"(Periodograma Suavizado de la Serie Diferenciada)"),
+       subtitle = "Método: AR(3)",
+       color = "") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  guides(color = guide_legend(position = "bottom"))
+
+grid.arrange(Plot_Espectro_Serie_Diferenciada, Plot_Espectro_Serie_Diferenciada_Suavizado, nrow = 2) 
+```
+
+El Espectro también muestra como la Primera Diferencia Regular elimina el componente tendencial, al presentar bajos valores en las frecuencias más bajas. No obstante, es posible observar como se realza el peso de las frecuencias que se encuentran en torno a $\omega_{\max} = 2.10$.
+
+Considerando que $\text{per}(\omega_j) = \frac{2\pi}{\omega_j}$, entonces se tiene que $\text{per}(\omega_{\max}) \approx 3$, lo que quiere decir que la aplicación de la Primera diferencia Regular tuvo como resultado el incrementar la importancia de los ciclos que se repiten cada 3 meses a la hora de explicar la variabilidad de la serie. 
+
+Esto constituye un fundamento para la utilización de $p=3$ en la modelización de la serie diferenciada o de la aplicación de una Primera Diferencia Estacional de período 3, como se había mencionado en el Análisis en el Dominio del Tiempo efectuado anteriormente. 
+
+PREGUNTA: ¿El hecho de que los ciclos que más explican la varianza sean los de período 3 puede ir de la mano con lo que indicaba Lucca de que entran deudores a los 3 meses (2+1)? Esto puede estar bueno comentarlo acá, así como al inicio del documento, para dar un fundamento teórico al hallazgo. 
+
+### Contrastes de Raíces Unitarias
+
+```{r}
+DF_Serie_Diferenciada <- ur.df(y = diff_cantidad_clientes_ts, type = "drift", selectlags = "BIC")
+KPSS_Serie_Diferenciada <- ur.kpss(y = diff_cantidad_clientes_ts, type = "mu")
+# DF rechaza Nula, no se tiene raíz unitaria.
+# KPSS no se rechaza que sea I(0).
+```
+
+Se procedió a llevar los contrastes de Dickey-Fuller Aumentado y KPSS a efectos de determinar si es necesaria la aplicación de una Segunda Diferencia Regular en la serie.
+
+#### Dickey-Fuller Aumentado
+
+En primera instancia se planteó el contraste seleccionando la cantidad de rezagos por medio de Criterios de Información (AIC y BIC) lo que resulta en la elección de $p = 1$. Con dicha cantidad de rezagos los residuos no se encuentran autocorrelacionados, por lo que, al contrario de la aplicación del contraste en la serie original, no se realiza el ensayo con otros lags.
+
+```{r}
+# Tabla de regresión del test
+DF_Serie_Diferenciada@testreg |>
+  tbl_regression(intercept = TRUE) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
+  modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
+```
+
+```{r}
+# Tabla de estadísticos y valores críticos
+df_results <- data.frame(
+  "Estadístico" = DF_Serie_Diferenciada@teststat[1,],
+  "VC 1%" = DF_Serie_Diferenciada@cval[,1],
+  "VC 5%" = DF_Serie_Diferenciada@cval[,2],
+  "VC 10%" = DF_Serie_Diferenciada@cval[,3]
+)
+rownames(df_results) <- c("tau2 (con constante)", "phi1")
+
+kable(df_results, caption = "Resultados del Test de Dickey-Fuller Aumentado")
+```
+
+Del contraste de Dickey-Fuller aumentado se concluye que:
+
+- Se rechaza la Hipótesis Nula de que la Serie presente una raíz unitaria en todos los niveles de significación planteados. De esta manera se tiene un respaldo estadístico para continuar trabajando con la serie diferenciada, en el sentido de que la misma sea estacionaria.
+
+#### KPSS
+
+En segunda instancia se plantea el Contraste KPSS, lo que resulta en el no rechazo de la Hipótesis Nula de que la serie sea Integrada de Orden $0$, lo que nuevamente da un respaldo estadístico para continuar trabajando con la serie diferenciada, sin aplicar una Segunda Diferencia Regular ($d = 2$).
+
+```{r}
+kpss_results_df <- data.frame(
+  Item = c("Estadístico de Test", "Valor Crítico 10%", "Valor Crítico 5%", "Valor Crítico 2.5%", "Valor Crítico 1%"),
+  Valor = c(KPSS_Serie_Diferenciada@teststat, KPSS_Serie_Diferenciada@cval[1], KPSS_Serie_Diferenciada@cval[2], KPSS_Serie_Diferenciada@cval[3], KPSS_Serie_Diferenciada@cval[4])
+)
+kable(kpss_results_df, caption = "Resultados del Test KPSS (con constante)")
+```
+
+## Serie Diferenciada de acuerdo a Primera Diferencia Regular y Primera Diferencia Estacional
+
+```{r}
+diff_estacional_anual <- diff(diff_cantidad_clientes_ts, lag = 12)
+```
+
+```{r}
+autoplot(diff_estacional_anual) +
+  labs(x = "Fecha", y = "Cantidad de 
+       Personas", 
+       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       subtitle = "Primera Diferencia Regular y Primera Diferencia Estacional (Anual)") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r}
+diff_estacional_anual_acf <- ggAcf(diff_estacional_anual, lag.max = 24, type = "correlation") +
+    labs(x = "k (Rezago)", 
+       y = TeX(r"($\hat{\rho_{k}}$)"), title = "FAC de la Serie Diferenciada (Regular y Estacional Anual)") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+
+diff_estacional_anual_pacf <- ggAcf(diff_estacional_anual, lag.max = 24, type = "partial") +
+    labs(x = "k (Rezago)", 
+       y = TeX(r"($\hat{\alpha_{k}}$)"), title = "FACP de la Serie Diferenciada (Regular y Estacional Anual)") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+
+grid.arrange(diff_estacional_anual_acf, diff_estacional_anual_pacf)
+```
+
+En este caso corresponde observar la FAC y FACP en los múltiplos de $12$. Se observa la significación tanto del primer coeficiente de autocorrelación como de autocorrelación parcial, lo que sugiere la utilización de $(P = 1, D = 1, Q = 0)[12]$ o $(P = 0, D = 1, Q = 1)[12]$ para la parte estacional de un primer modelo $\text{SARIMA}$.
+
+```{r}
+# Espectro de la Serie:
+Espectro_Serie_Diferenciada_Est_12 <- spectrum(diff_estacional_anual, method = c("pgram"), 
+                                              freq = seq(from = 0, to = 0.5, length.out = 1000), plot = F) 
+# Se transforma las frecuencias para el intervalo [0,\pi]:
+Espectro_Serie_Diferenciada_Tibble_12 <- tibble(Frecuencias = Espectro_Serie_Diferenciada_Est_12$freq*pi/max(Espectro_Serie_Diferenciada_Est_12$freq),
+                                               Espectro = Espectro_Serie_Diferenciada_Est_12$spec)
+# Plot:
+Plot_Espectro_Serie_Diferenciada_12 <- ggplot(Espectro_Serie_Diferenciada_Tibble_12) +
+  geom_line(aes(Frecuencias, Espectro)) +
+  labs(x = TeX(r"($\omega$ (Frecuencias))"), 
+       y = TeX(r"($S_{X}$(\omega))"),
+       title = TeX(r"(Periodograma de la Serie Diferenciada)"),
+       color = "") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  guides(color = guide_legend(position = "bottom"))
+
+Espectro_Serie_Diferenciada_Est_12 <- spec.ar(diff_estacional_anual, n.freq = 1000, #order = 1,
+                                              plot = F)
+# Se transforma las frecuencias para el intervalo [0,\pi]:
+Espectro_Serie_Diferenciada_Tibble_12 <- tibble(Frecuencias = Espectro_Serie_Diferenciada_Est_12$freq*pi/max(Espectro_Serie_Diferenciada_Est_12$freq),
+                                               Espectro = Espectro_Serie_Diferenciada_Est_12$spec)
+# Plot:
+Plot_Espectro_Serie_Diferenciada_Suavizado_12 <- ggplot(Espectro_Serie_Diferenciada_Tibble_12) +
+  geom_line(aes(Frecuencias, Espectro)) +
+  labs(x = TeX(r"($\omega$ (Frecuencias))"), 
+       y = TeX(r"($S_{X}$(\omega))"),
+       title = TeX(r"(Periodograma Suavizado de la Serie Diferenciada)"),
+       subtitle = "Método: AR(0)",
+       color = "") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
+  guides(color = guide_legend(position = "bottom"))
+
+grid.arrange(Plot_Espectro_Serie_Diferenciada_12, Plot_Espectro_Serie_Diferenciada_Suavizado_12)  
+```
+
+En el Análisis en el Dominio de Frecuencias es posible observar como la Primera Diferencia Regular en conjunto con la Primera Diferencia Estacional resultan en un Periodograma Suavizado semejante al de un Ruido Blanco. 
+
+Dada dicha particularidad se observó el comportamiento del Periodograma Original, donde se alcanzan picos sucesivos en las frecuencias más altas, lo que está asociado a ciclos de período bajo.  
+
+# Modelo Final Propuesto: SARIMA(2,1,0)(1,1,0)
+
+A continuación, se presenta el modelo $\text{SARIMA}$ finalista seleccionado para la serie temporal. El mismo ha sido ajustado con intervención de valores atípicos y sometido a un riguroso proceso de diagnóstico.
+
+# Procedimiento de Obtención del Modelo
+
+Se partió de un Modelo $\text{SARIMA}(3,1,0)(0,0,0)[12]$ de acuerdo a lo expuesto en el análisis de la FAC y FACP desarrollado previamente. En particular, se había identificado:
+
+- Coeficientes significativos en la FAC y FACP en el tercer rezago, así como significativos y con decaimiento a medida que aumenta el rezago en los que resultan múltiplos de 3. De esta manera se desprende utilizar $p = 3$ con $\phi_1 = \phi_2 = 0$ a la hora de modelar la parte regular de la serie.
+
+- Los coeficientes significativos de la FAC y FACP de la serie resultante de aplicar tanto la Primera Diferencia Regular como Primera Diferencia Estacional en el doceavo retardo determinan el uso de $P = 1$ o $Q = 1$.
+
+Si bien se resalta la existencia de un componente estacional a modelar se decide no hacerlo priorizando la identificación de puntos anómalos^[La utilización de las funciones de detección de anómalos cuando se incluye las estacionalidades produce advertencias de llegar al número máximo de iteraciones, junto con una cantidad de puntos anómalos sugeridos superior a 10, lo que constituye los motivos para indagar sobre los atípicos previo a modelar la estacionalidad.].
+
+El modelo resultante presenta el coeficiente $\phi_3$ de la parte $\text{AR}$ significativo a todos los niveles de significación usuales^[Se probó ajustar el modelo sin forzar $\phi_1 = \phi_2 = 0$, no resultando significativos $\phi_1$ y $\phi_2$, razón por la que se los dejó fijos en $0$]. El modelo ajustado resultante es: 
+
+```{r}
+Modelo_Prueba_2 <- Arima(y = cantidad_clientes_ts,
+                  order = c(3, 1, 0),
+                  #seasonal = list(order = c(0,1,1), period = 12),
+                  fixed = c(
+                    0, 0, NA
+                  ),
+                  method = "ML")
+tbl_regression(Modelo_Prueba_2, exponentiate = FALSE, tidy_fun = tidy_arima) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
+  modify_caption("Coeficientes del Modelo SARIMA(3,1,0)(0,0,0)[12]")
+
+model_m2_initial_metrics <- data.frame(
+  AIC = Modelo_Prueba_2$aic,
+  AICc = Modelo_Prueba_2$aicc,
+  BIC = Modelo_Prueba_2$bic
+)
+kable(model_m2_initial_metrics, caption = "Criterios de Información del Modelo Inicial")
+```
+
+Una primera observación de los residuos estandarizados indicó la presencia de outliers. A su vez, se rechazó la Hipótesis Nula de Normalidad en los contrastes de Shapiro-Wilk y Jarque-Bera, lo que motivó la intervención de los siguientes puntos anómalos:
+
+- Outlier Aditivo en Setiembre de 2019.
+
+- Cambio Transitorio en Diciembre de 2019.
+
+- Cambio Transitorio en Diciembre de 2021.
+
+- Outlier Aditivo en Febrero de 2023.
+
+- Outlier Aditivo en Agosto de 2023.
+
+- Cambio Transitorio en Octubre de 2023.
+
+- Cambio Transitorio en Junio de 2024.
+
+Recuérdese que se había planteado durante la inspección inicial de la serie la posibilidad de que hubieran observaciones atípicas a fines de los años 2019, 2021 y 2023, lo que es consistente con el resultado anterior^[Se utilizó el paquete `tso` a efectos de identificar los outliers y su tipo.]
+
+Si bien la cantidad de outliers intervenidos supera la proporción límite, arbitraria pero recomendada, de intervenciones (9.5% aproximadamente contra 5%), tiene como resultado el cumplimiento de varios supuestos en la etapa de diagnóstico, aunque requiriendo previamente la redefinición del orden del modelo.
+
+Realizadas las intervenciones se modela la estacionalidad, por medio de $P=1$ o $Q=1$, en base a los observaciones realizadas sobre la FAC y FACP de la serie resultante de aplicar la Primera Diferencia Regular y Estacional. Como resultado se pierde la significación del coeficiente $\phi_3$ de la parte regular, lo que motiva la redefinición del modelo en un $\text{SARIMA}(2,1,0)(1,1,0)[12]$.
+
+Por un lado, en la parte regular no resulta significativo el coeficiente $\phi_1$, por lo que se lo fijó en $0$. Por otro lado, en la parte estacional se decidió utilizar $P=1,D=1,Q=0$ en vez de $P=0,D=1,Q=1$ dado que el coeficiente de la parte $\text{AR}$ asociado a la primera modelización presenta un menor p-valor que el coeficiente de la parte $\text{MA}$ de la segunda^[La utilización de un $\text{AR}(1)$ o $\text{MA}(1)$ en la parte estacional produce modelos con Criterios de Información prácticamente iguales.].
+
+```{r}
+# Detección de atípicos en un modelo base
+outlier_m2_detect <- tso(cantidad_clientes_ts, 
+                  cval = 2.5, 
+                  types = c("AO", "LS", "TC"), 
+                  tsmethod = "arima", 
+                  args.tsmethod = list(order = c(2, 1, 0),
+                                       seasonal = list(order = c(1,1,0), period = 12),
+                                       include.mean= FALSE))
+
+# Creación de regresores para atípicos
+AO_2019_09_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts))
+TC_2019_12_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts))
+TC_2021_12_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 37), length(cantidad_clientes_ts))
+AO_2023_02_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 51), length(cantidad_clientes_ts))
+AO_2023_08_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts))
+TC_2023_10_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts))
+TC_2024_06_m2 <- tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts)) 
+
+xreg_m2 <- cbind(AO_2019_09_m2, TC_2019_12_m2, TC_2021_12_m2, AO_2023_02_m2, AO_2023_08_m2, TC_2023_10_m2, TC_2024_06_m2)
+```
+
+## Ajuste del Modelo Final
+
+Se estima, finalmente, el siguiente modelo:
+
+```{r}
+modelo_2 <- Arima(y = cantidad_clientes_ts,
+                  order = c(2, 1, 0),
+                  seasonal = list(order = c(1,1,0), period = 12),
+                  fixed = c(0, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+                  xreg = xreg_m2,
+                  method = "ML")
+                  
+tbl_regression(modelo_2, exponentiate = FALSE, tidy_fun = tidy_arima) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
+  modify_caption("Coeficientes del Modelo SARIMA(2,1,0)(1,1,0)")
+```
+
+## Criterios de Información y Medidas de Error
+
+Como resultado se obtiene una disminución significativa en los tres Criterios de Información utilizados respecto al modelo inicial:
+
+```{r}
+model_m2_metrics <- data.frame(
+  AIC = modelo_2$aic,
+  AICc = modelo_2$aicc,
+  BIC = modelo_2$bic
+)
+kable(model_m2_metrics, caption = "Criterios de Información del Modelo SARIMA(2,1,0)(1,1,0)")
+```
+
+Y las medidas de error que serán objeto de análisis en la sección de Predicción:
+
+```{r}
+error_measures_m2 <- accuracy(modelo_2) %>% as.data.frame()
+kable(error_measures_m2, caption = "Medidas de Error del Modelo SARIMA(2,1,0)(1,1,0)")
+```
+
+## Diagnóstico de Residuos
+
+A su vez los residuos presentan un buen comportamiento evidenciado por la FAC y FACP de los mismos, donde no hay coeficientes de autocorrelación ni autocorrelación parcial que resulten significativos. 
+
+```{r}
+residuos_m2 <- residuals(modelo_2)
+autoplot(residuos_m2) +
+  labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo SARIMA(2,1,0)(1,1,0)") +
+  geom_hline(yintercept = 0, color = "red") +
+  theme_minimal()
+
+residuos_m2_acf <- ggAcf(residuos_m2, lag.max = 24, type = "correlation") +
+  labs(title = "FAC de los Residuos del Modelo SARIMA(2,1,0)(1,1,0)") +
+  theme_minimal()
+residuos_m2_pacf <- ggAcf(residuos_m2, lag.max = 24, type = "partial") +
+  labs(title = "FACP de los Residuos del Modelo SARIMA(2,1,0)(1,1,0)") +
+  theme_minimal()
+grid.arrange(residuos_m2_acf, residuos_m2_pacf)
+```
+
+### Test de Ljung-Box
+
+No obstante, los p-valores asociados al contraste de Ljung-Box resultan particularmente bajos, lo que sugiere que esta modelización puede estar incumpliendo el supuesto de residuos no autocorrelacionados.
+
+```{r}
+ljung_box_df_m2 <- tibble()
+for(i in c(3, 6, 9, 12,24)){
+  ljung_box_df_m2 <- rbind(ljung_box_df_m2, (Box.test(
+    residuos_m2, lag = i, type = "Ljung-Box", fitdf = 3) %>% tidy())) # 2 + 1, Regular + Estacional
+}
+kable(ljung_box_df_m2, caption = "Test de Ljung-Box para Residuos del Modelo SARIMA(2,1,0)(1,1,0) (Rezagos 3, 6, 9, 12 y 24)")
+```
+
+### Análisis de Normalidad y Homocedasticidad
+
+Los Contrastes de Normalidad resultan en el no rechazo de la correspondiente Hipótesis Nula, por lo que no se dispone de evidencia estadísticamente significativa de que los residuos no se distribuyan de acuerdo a una Distribución Gaussiana.
+
+```{r}
+# Residuos estandarizados
+residuos_estandarizados_m2 <- residuos_m2 / sqrt(modelo_2$sigma2)
+autoplot(residuos_estandarizados_m2) +
+  labs(x = "Año", y = "Residuos Estandarizados", title = "Residuos Estandarizados del Modelo SARIMA(2,1,0)(1,1,0)") +
+  geom_hline(yintercept = 3, color = "red") +
+  geom_hline(yintercept = -3, color = "red") +
+  theme_minimal()
+
+ggplot(data.frame(residuos = residuos_m2), aes(sample = residuos)) +
+  stat_qq() + stat_qq_line(color = "red") +
+  labs(title = "QQ-plot de Residuos del Modelo SARIMA(2,1,0)(1,1,0)") +
+  theme_minimal()
+
+shapiro_test_m2 <- shapiro.test(residuos_m2) |> tidy()
+jarque_bera_test_m2 <- jarque.bera.test(residuos_m2) |> tidy()
+normalidad_m2 <- dplyr::bind_rows(
+  "Shapiro-Wilk" = shapiro_test_m2,
+  "Jarque-Bera" = jarque_bera_test_m2,
+  .id = "Test"
+)
+kable(normalidad_m2, caption = "Tests de Normalidad para Residuos del Modelo SARIMA(2,1,0)(1,1,0)")
+```
+
+A efectos de evaluar el cumplimiento del supuesto de Homocedasticidad o Varianza Constante, se planteó el contraste de Ljung-Box así como la FAC y FACP del cuadrado de los residuos. En el primero se observa la significación de los coeficientes de autocorrelación y autocorrelación parcial de orden 6, lo que sugiere el incumplimiento del supuesto. No obstante, los resultados del contraste de Ljung-Box hacen que se desestime esta idea.
+
+```{r}
+residuos_m2_sq <- residuos_m2^2
+residuos_sq_acf_m2 <- ggAcf(residuos_m2_sq, lag.max=24, type = "correlation") + labs(title = "FAC del Cuadrado de los Residuos del Modelo SARIMA(2,1,0)(1,1,0)") + theme_minimal()
+residuos_sq_pacf_m2 <- ggAcf(residuos_m2_sq, lag.max=24, type = "partial") + labs(title = "FACP del Cuadrado de los Residuos del Modelo SARIMA(2,1,0)(1,1,0)")  + theme_minimal()
+grid.arrange(residuos_sq_acf_m2, residuos_sq_pacf_m2)
+
+# Ljung-Box para los Cuadrados de los Residuos.
+ljung_box_df_m2_residuos_cuadrado <- tibble()
+for(i in c(3, 6, 9, 12, 24)){
+  ljung_box_df_m2_residuos_cuadrado <- rbind(
+    ljung_box_df_m2_residuos_cuadrado, 
+    (Box.test(residuos_m2_sq, 
+              lag = i, type = "Ljung-Box", fitdf = 3) %>% tidy()))
+};rm(i)
+kable(ljung_box_df_m2, caption = "Test de Ljung-Box para el Cuadrado de los Residuos del Modelo SARIMA(2,1,0)(1,1,0) (Rezagos 3, 6, 9, 12 y 24)")
+```
+
+### Contraste de Media Nula de los Residuos
+
+Finalmente se lleva acabo un contraste de hipótesis a efectos de determinar si las perturbaciones tienen media nula:
+
+```{r}
+Media_Testear <- mean(residuos_m2)/(sd(residuos_m2)/sqrt(73))
+Resultado_Prueba_t <- (t.test(residuos_m2, mu = 0) %>% tidy)[,1:4]
+kable(Resultado_Prueba_t, caption = "Tests de Media Nula para Residuos del Modelo SARIMA(2,1,0)(1,1,0)")
+```
+
+No se rechaza la Hipótesis Nula de que los residuos tengan una media distinta de $0$, por lo que se culmina la etapa de diagnóstico del modelo.
+
+# Predicción
+
+El Modelo a utilizar es un $\text{SARIMA}(2,1,0)(1,1,0)$ con $\phi_1 = 0$, que puede expresarse como:
+
+$$
+(1-L)(1-L^{12})(1-L^2{\phi}_2)(1-L{\Phi}_1)Y_t = \epsilon_t
+$$
+
+Donde $Y_t$ denota a la serie de datos original, $L$ al operador de retardos y $\epsilon_t$ un ruido blanco. ${\phi}_2$ y ${\Phi}_1$ son los coeficientes respectivas de las partes AR del componenente Regular y Estacional del Modelo.
+
+## Enero, Febrero y Marzo de 2025
+
+Se realiza predicciones para los meses de Enero, Febrero y Marzo de 2025, a efectos de contrastarla con las tres observaciones que no se utilizaron a la hora de ajustar el modelo.
+
+```{r}
+# Crear matriz de regresores futuros, ceros en caso de AO, pero en caso de TS que continuen el decaimiento.
+# Predicciones a 12 pasos:
+xreg_prediccion_m2 <- tibble(
+  AO10 = tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 10), length(cantidad_clientes_ts) + 12),
+  TC13 = tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 13), length(cantidad_clientes_ts) + 12),
+  TC37 = tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 37), length(cantidad_clientes_ts) + 12),
+  AO51 = tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 51), length(cantidad_clientes_ts) + 12),
+  AO57 = tsoutliers::outliers.effects(tsoutliers::outliers(type = "AO", ind = 57), length(cantidad_clientes_ts) + 12),   
+  TC59 = tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 59), length(cantidad_clientes_ts) + 12),
+  TC67 = tsoutliers::outliers.effects(tsoutliers::outliers(type = "TC", ind = 67), length(cantidad_clientes_ts) + 12)
+)
+
+Predicciones_Modelo_2 <- forecast(
+  modelo_2, fan = TRUE, xreg = as.matrix(xreg_prediccion_m2[74:85,]), h = 12)
+
+autoplot(object = Predicciones_Modelo_2) +
+  labs(title = "Cantidad de Clientes con Deuda en Santander: 
+       Predicción de 2025",
+       subtitle = TeX(r"(Modelo SARIMA$(2,1,0)(1,1,0)$)"),
+       x = "Fecha", y = "") +
+  theme_minimal()
+
+Comparacion_Prediccion_Realidad_Modelo_2 <- tibble(
+  Fecha = (time(cantidad_clientes_ts_completa) %>% as.Date())[(length(cantidad_clientes_ts_completa)-2):length(cantidad_clientes_ts_completa)],
+  Predicción = Predicciones_Modelo_2$mean[1:3],
+  Realidad = cantidad_clientes_ts_completa[(length(cantidad_clientes_ts_completa)-2):length(cantidad_clientes_ts_completa)]) %>%
+  pivot_longer(cols = c(Predicción, Realidad),
+               names_to = "Serie",
+               values_to = "Valores")
+
+ggplot(Comparacion_Prediccion_Realidad_Modelo_2) +
+  geom_line(aes(x = Fecha, y = Valores, color = Serie)) +
+  theme_minimal() +
+  labs(
+    title = "Cantidad de Clientes con Deuda en Santander: 
+    Predicción contra Realidad",
+    subtitle = TeX(r"(Modelo SARIMA$(2,1,0)(1,1,0)$)"),
+    y = "",
+    x = "Fecha",
+    color = ""
+  ) +
+  guides(color = guide_legend(position = "bottom")) 
+```
+
+```{r}
+Predicciones_Modelo_2_Tabla_ICs <- forecast(
+  modelo_2, fan = FALSE, xreg = as.matrix(xreg_prediccion_m2[74:85,]), h = 12,
+  level = c(50, 75, 90, 96))
+
+Tabla_ICs_1 <- (Predicciones_Modelo_2_Tabla_ICs %>% as.tibble %>% janitor::clean_names())[1:3,] %>% 
+  select(lo_50, hi_50) %>% 
+  cbind(
+    tibble(
+  Fecha = c("Enero - 2025", "Febrero - 2025", "Marzo - 2025"),
+  Prediccion = Predicciones_Modelo_2_Tabla_ICs$mean[1:3],
+  Realidad = cantidad_clientes_ts_completa[(length(cantidad_clientes_ts_completa)-2):length(cantidad_clientes_ts_completa)])
+  ) %>% 
+  mutate(Capturado = ifelse((lo_50 <= Realidad)&(hi_50 >= Realidad), "Si", "No")) %>% 
+  select(Fecha, `Límite Inferior 50%` = lo_50, Predicción = Prediccion, `Límite Superior 50%` = hi_50, Realidad, Capturado)
+
+kable(Tabla_ICs_1, caption = "Intervalos de Confianza al 50% de los Primeros 3 Meses de 2025 contra Realidad")
+
+Tabla_ICs_2 <- (Predicciones_Modelo_2_Tabla_ICs %>% as.tibble %>% janitor::clean_names())[1:3,] %>% 
+  select(lo_75, hi_75) %>% 
+  cbind(
+    tibble(
+  Fecha = c("Enero - 2025", "Febrero - 2025", "Marzo - 2025"),
+  Prediccion = Predicciones_Modelo_2_Tabla_ICs$mean[1:3],
+  Realidad = cantidad_clientes_ts_completa[(length(cantidad_clientes_ts_completa)-2):length(cantidad_clientes_ts_completa)])
+  ) %>% 
+  mutate(Capturado = ifelse((lo_75 <= Realidad)&(hi_75 >= Realidad), "Si", "No")) %>% 
+  select(Fecha, `Límite Inferior 75%` = lo_75, Predicción = Prediccion, `Límite Superior 75%` = hi_75, Realidad, Capturado)
+
+kable(Tabla_ICs_2, caption = "Intervalos de Confianza al 75% de los Primeros 3 Meses de 2025 contra Realidad")
+
+Tabla_ICs_3 <- (Predicciones_Modelo_2_Tabla_ICs %>% as.tibble %>% janitor::clean_names())[1:3,] %>% 
+  select(lo_90, hi_90) %>% 
+  cbind(
+    tibble(
+  Fecha = c("Enero - 2025", "Febrero - 2025", "Marzo - 2025"),
+  Prediccion = Predicciones_Modelo_2$mean[1:3],
+  Realidad = cantidad_clientes_ts_completa[(length(cantidad_clientes_ts_completa)-2):length(cantidad_clientes_ts_completa)])
+  ) %>% 
+  mutate(Capturado = ifelse((lo_90 <= Realidad)&(hi_90 >= Realidad), "Si", "No")) %>% 
+  select(Fecha, `Límite Inferior 90%` = lo_90, Predicción = Prediccion, `Límite Superior 90%` = hi_90, Realidad, Capturado)
+
+kable(Tabla_ICs_3, caption = "Intervalos de Confianza al 90% de los Primeros 3 Meses de 2025 contra Realidad")
+
+Tabla_ICs_4 <- (Predicciones_Modelo_2_Tabla_ICs %>% as.tibble %>% janitor::clean_names())[1:3,] %>% 
+  select(lo_96, hi_96) %>% 
+  cbind(
+    tibble(
+  Fecha = c("Enero - 2025", "Febrero - 2025", "Marzo - 2025"),
+  Prediccion = Predicciones_Modelo_2$mean[1:3],
+  Realidad = cantidad_clientes_ts_completa[(length(cantidad_clientes_ts_completa)-2):length(cantidad_clientes_ts_completa)])
+  ) %>% 
+  mutate(Capturado = ifelse((lo_96 <= Realidad)&(hi_96 >= Realidad), "Si", "No")) %>% 
+  select(Fecha, `Límite Inferior 96%` = lo_96, Predicción = Prediccion, `Límite Superior 96%` = hi_96, Realidad, Capturado)
+
+kable(Tabla_ICs_4, caption = "Intervalos de Confianza al 96% de los Primeros 3 Meses de 2025 contra Realidad")
+```
+
+Se puede apreciar que se captura al 50% de confianza el valor real de la serie en los meses de Enero y Marzo de 2025. Sin embargo, el valor de Febrero de 2025 requiere utilizar un intervalo de amplitud mayor asociado a una confianza aproximada del 96%.
+
+**Métricas sobre los errores de predicción**
+
+Se obtiene algunas medidas de los errores de predicción sobre el conjunto de testeo. Para ello los errores son tomados como la diferencia en cada punto de la serie entre el conjunto de testeo (los valores reales) y los valores predichos, es decir, $(x - \hat{x})$.
+
+```{r}
+test_clientes <- window(cantidad_clientes_ts_completa, start = c(2025,1))
+acc1 <- round(accuracy(Predicciones_Modelo_2, test_clientes), 4)
+kable(acc1, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
+```
+
+Un ME (Mean Error o Error Medio) positivo implica que el modelo en promedio subestima. Es posible ver con qué porcentaje al observar el MPE (Mean Percentage Error o Error Medio Porcentual). En el caso de las predicciones a un paso sobre el conjunto de entrenamiento^[Se recuerda que en este caso el set de entrenamiento está compuesto por las observaciones hasta diciembre de 2024, mientras que el de prueba o test está integrado por las tres observaciones disponibles para 2025.], los errores se compensan lo suficiente generando que dicha subestimación sea considerablemente pequeña, con un PME de solo el 7,6%. Por otro lado, para los errores de predicción sobre el conjunto de testeo, la subestimación es relativamente grande, en promedio de un 66%, lo que está explicado por la predicción referida a Febrero de 2025.
+
+El MAE (Mean Absolute Error o Error Absoluto Medio) presenta un error en términos absolutos que, para ambos casos, en comparación con el rango de valores de la serie, no parece ser tan alto. Sin embargo, el MAPE (Mean Absolute Percentage Error o Error Medio Absoluto Porcentual), el cual muestra dichos errores en términos relativos, es considerablemente alto. El modelo comete en promedio un 44% de error relativo respecto al valor real para el caso del set de entrenamiento y un 66% para el caso de los tres meses de 2025.
+
+Es preciso señalar que los valores de ME y MAE son prácticamente los mismos para el set de testeo, lo que es producto de que en las tres predicciones realizadas se subestimó el valor real de la serie, como se pudo bien observar en gráficos anteriores. 
+
+El RMSE (Root Mean Square Error o Raiz Media de los Errores al Cuadrado), el cual tiene la característica de penalizar errores grandes, si bien es más alto que el MAE para ambos casos, en proporción a la media de la serie representa solo un 0,6% y un 1% respectivamente. De esta manera no se presenta errores extremadamente grandes en las predicciones al comparar con el promedio de la serie.
+
+El MASE (Mean Absolute Scaled Error o Error Medio Absoluto Escalado) es una métrica que compara el MAE de la predicción con el MAE que se obtiene al utilizar un modelo naive de un lag. En este caso el modelo planteado predice ampliamente mejor que uno naive, ya que los valores 7,2%, para el set de training, y 13,5%, para el set de testeo, son extremadamente bajos.
+
+Por su lado, el ACF1 (Autocorrelation of errors at lag 1 o Autocorrelación de los Errores en el Rezago 1), medida de la correlación entre errores a un rezago, muestra que existe poca correlación entre los errores del set de training, mientras que para el set de testeo parece existir cierta correlación negativa.
+
+Por último, la Métrica de Theil's U (*Theil’s Inequality Coefficient*) para el set de testeo es mayor que 1, esto sugiere que las predicciones son inexactas.
+
+## 2024 y 2025
+
+También se realiza predicciones para el 2024 y los primeros tres meses de 2025, utilizando el mismo modelo propuesto pero entrenándolo con las observaciones disponibles hasta diciembre de 2023.
+
+```{r}
+# Predicción afuera de la Muestra:
+# Muestra de entrenamiento ("training set") hasta 2022 inclusive
+train_clientes <- window(cantidad_clientes_ts_completa, end = c(2023,12))
+# length(train_clientes)
+
+# Dejamos los datos de 2023 como conjunto de prueba ("test set")
+test_clientes <- window(cantidad_clientes_ts_completa, start = 2024)
+n <- length(test_clientes)
+
+# Modelo 2 Entrenado hasta 2023.
+Modelo_Final_train_m2 <- Arima(y = train_clientes,
+                        order = c(2, 1, 0),
+                        seasonal = list(order = c(1,1,0), period = 12),
+                        fixed = c(
+                          0, NA,
+                          NA,
+                          NA, NA, NA, NA, NA, NA #, NA
+                          ), # Un outlier vendría después.
+                        xreg = xreg_m2[1:61,1:6],
+                        method = "ML")
+
+# Predicción fuera de la muestra:
+Pred_Final_Test_m2 <- forecast(Modelo_Final_train_m2, h = n, 
+                        xreg = as.matrix(xreg_prediccion_m2[62:(dim(xreg_prediccion_m2)[1] -9),1:6]))
+# accuracy(Pred_Final_Test_m2, test_clientes)
+
+autoplot(object = Pred_Final_Test_m2) +
+  labs(title = "Cantidad de Clientes con Deuda en Santander: 
+       Predicción de 2024 y Principios 2025",
+       subtitle = TeX(r"(Modelo SARIMA$(2,1,0)(1,1,0)$)"),
+       x = "Fecha", y = "") +
+  theme_minimal()
+
+Predicciones_Dentro_Muestra_Tibble_m2 <- tibble(
+  Fecha = Pred_Final_Test_m2$mean %>% time %>% as.Date(),
+  Predicción = Pred_Final_Test_m2$mean[1:length(Pred_Final_Test_m2$mean %>% time %>% as.Date())],
+  Realidad = cantidad_clientes_ts_completa[
+    (length(cantidad_clientes_ts_completa)-(
+      length(Pred_Final_Test_m2$mean %>% time %>% as.Date())-1)):length(cantidad_clientes_ts_completa)]) %>%
+  pivot_longer(cols = c(Predicción, Realidad),
+               names_to = "Serie",
+               values_to = "Valores")
+
+ggplot(Predicciones_Dentro_Muestra_Tibble_m2) +
+  geom_line(aes(x = Fecha, y = Valores, color = Serie)) +
+  theme_minimal() +
+  labs(
+    title = "Cantidad de Clientes con Deuda en Santander: 
+    Predicciones dentro de Muestra",
+    subtitle = TeX(r"(Modelo SARIMA$(2,1,0)(1,1,0)$)"),
+    y = "",
+    x = "Fecha",
+    color = ""
+  ) +
+  guides(color = guide_legend(position = "bottom")) 
+```
+
+De forma similar al modelo anterior se nota una diferencia en la pendiente de la predicción puntual y la realidad. Nuevamente, la primera tiende a ser cada vez menor que la segunda a medida que aumenta el horizonte de predicción. 
+
+**Métricas sobre los errores de predicción**
+
+```{r}
+acc2 <- round(accuracy(Pred_Final_Test_m2, test_clientes), 4)
+kable(acc2, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
+```
+
+Los errores en el nuevo set de entrenamiento^[Que ahora está constituido por las observaciones hasta diciembre de 2023.] presentan métricas muy similares a las de las predicciones del punto anterior. Solo el ME, en conjunto con el MPE en términos relativos, disminuyó notablemente. Esto implica que los errores en promedio se compensan aún más.
+
+En el caso del set de testeo, las métricas de los errores en general empeoraron, lo cual es esperable tomando en cuenta que el horizonte de predicción es ahora considerablemente más lejano. 
+
+Según el ME y el MPE, se subestima ampliamente los valores de la serie empírica. Esto se puede observar claramente en el gráfico inmediato anterior.
+
+El RMSE y el MAE también aumentaron notablemente. Aunque en comparación con la escala no parecen ser tan altos y en proporción a la media solo representan un 8%. 
+
+Analizándolo en términos relativos, el MAPE implica un error de predicción muy alto.
+
+Por su parte, el MASE, al ser menor que 1, sugiere que se predice mejor que con un modelo naive.
+
+En este caso el ACF1 indica una posible correlación positiva entre los errores.
+
+Finalmente, el Theil's U muestra un valor considerablemente alejado de 0, entendiéndose que las predicciones presentan errores bastante altos.
+
+## A partir de Junio de 2024
+
+Considerando una muestra de entrenamiento con límite en Junio de 2024, tal que se incorpore el cambio transitorio identificado para ese mes, se obtiene los siguientes resultados para un horizonte de predicción hasta Marzo de 2025:
+
+```{r}
+# Si se lograra capturar el atípico, es decir, darse cuenta que en
+# Junio de 2024 ocurrió un cambio transitorio.
+train_clientes <- window(cantidad_clientes_ts_completa, end = c(2024,6))
+# length(train_clientes)
+
+# Dejamos los datos de 2023 como conjunto de prueba ("test set")
+test_clientes <- window(cantidad_clientes_ts_completa, start = c(2024,7))
+n <- length(test_clientes)
+
+# Modelo 3
+Modelo_Final_train_m2_2 <- Arima(y = train_clientes,
+                            order = c(2, 1, 0),
+                            seasonal = list(order = c(1,1,0), period = 12),
+                            fixed = c(
+                              0, NA,
+                              NA,
+                              NA, NA, NA, NA, NA, NA, NA
+                            ), # Un outlier vendría después.
+                            xreg = xreg_m2[1:67,],
+                            method = "ML")
+Pred_Final_Test_m2_2 <- forecast(Modelo_Final_train_m2_2, h = n, 
+                            xreg = as.matrix(xreg_prediccion_m2[68:(dim(xreg_prediccion_m2)[1]),]))
+# accuracy(Pred_Final_Test_m2_2, test_clientes)
+
+autoplot(object = Pred_Final_Test_m2_2) +
+  labs(title = "Cantidad de Clientes con Deuda en Santander: 
+       Predicción a partir de Junio de 2024",
+       subtitle = TeX(r"(Modelo SARIMA$(2,1,0)(1,1,0)$)"),
+       x = "Fecha", y = "") +
+  theme_minimal()
+
+Predicciones_Dentro_Muestra_Tibble_m2_2 <- tibble(
+  Fecha = (Pred_Final_Test_m2_2$mean %>% time %>% as.Date())[1:9],
+  Predicción = Pred_Final_Test_m2_2$mean[1:9],
+  Realidad = cantidad_clientes_ts_completa[
+    (length(cantidad_clientes_ts_completa)-(8)):length(cantidad_clientes_ts_completa)]) %>%
+  pivot_longer(cols = c(Predicción, Realidad),
+               names_to = "Serie",
+               values_to = "Valores")
+
+ggplot(Predicciones_Dentro_Muestra_Tibble_m2_2) +
+  geom_line(aes(x = Fecha, y = Valores, color = Serie)) +
+  labs(
+    title = "Cantidad de Clientes con Deuda en Santander: 
+    Predicciones dentro de Muestra",
+    subtitle = TeX(r"(Modelo SARIMA$(2,1,0)(1,1,0)$)"),
+    y = "",
+    x = "Fecha",
+    color = ""
+  ) +
+  theme_minimal() +
+  guides(color = guide_legend(position = "bottom")) 
+```
+
+La predicción para los siguientes meses resulta bastante precisa. Es solo a partir de Diciembre del 2024 que se observa una discrepancia relativamente mayor con la serie empírica con tendencia a subestimar.
+
+**Métricas sobre los errores de predicción**
+
+```{r}
+acc3 <- round(accuracy(Pred_Final_Test_m2_2, test_clientes), 4)
+kable(acc3, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
+```
+
+Para este último período de predicción, las métricas para el conjunto de entrenamiento^[Ahora integrado por observaciones hasta Junio de 2024, tal que se pueda incluir el efecto del atípico de este último mes en la predicción.] resultan también  muy parecidas a las resultantes de entrenar el modelo con los anteriores dos períodos.
+
+Por otro lado, para el set de testeo, las métricas son en general mejores que las del anterior período tomado, pero relativamente peores que las del primero. Esto es de esperarse nuevamente debido al horizonte de predicción, de menor extensión que en el punto anterior, y al hecho de que se contempla el efecto de un nuevo dato atípico.
+
+La subestimación según el ME y el MPE continúa siendo alta, y nuevamente el RMSE no resulta grande en comparación a la escala de la serie.
+
+Según el MASE, el modelo propuesto predice mejor en comparación con un modelo naive.
+
+En general las métricas en general sugieren errores de predicción altos para la muestra de testeo en comparación con los que resultan a un paso en la muestra de entrenamiento.
+
+# Descomposición de la Serie
+
+Mediante la función `x13` (asociada al método estadístico del mismo nombre) del paquete `RJDemetra` se llevó acabo la descomposición de la serie (de acuerdo a términos aditivos), tomando en cuenta el Modelo Final planteado anteriormente^[Y por ende se estableció el orden del modelo, se fijó los coeficientes en $0$ que correspondiesen así como se señaló los outliers identificados en la especificación que la función `x13` utilizó como insumo. Se desactivó otras funcionalidades, como la aplicación de logaritmo o los efectos calendario.]
+
+Como resultado se obtuvo la descomposición de la serie, lo que permitió computar una serie desestacionalizada, que se muestra a continuación:
+
+```{r}
+load("Componentes/Salidas_Script_Componentes.Rdata")
+grid.arrange(Plot_1_Serie_Original, Plot_2_Serie_Desestacionalizada, Plot_4_SA_T, nrow = 3)
+```
+
+En el primer gráfico es posible observar la serie original, mientras que su versión desestacionalizada puede apreciarse en el segundo. Se puede notar como la serie se ha vuelto más suave, no reflejando las periodicidades de la serie original. En el tercer gráfico se compara la serie desestacionalizada con el componente tendencial, siendo posible identificar los apartamientos de la tendencia debido a los outliers destacados en el desarrollo del presente trabajo^[Al ser outliers de tipo aditivo y de cambio transitorio los mismos quedan incluídos en el componente irregular y por ende son apreciables en la serie desestacionalizada.].
+
+De interés puede ser observar el componente estacional y el irregular por separado:
+
+```{r}
+grid.arrange(Plot_5_Estacional, Plot_6_Irregular, nrow = 2)
+```
+
+Por un lado, el componente estacional se comporta de forma esperable, presentando, en general, picos de altura similar cada 12 meses. Esto se condice con la estacionalidad identificada al graficar la serie diferenciada de acuerdo al año: cada mes se comporta de forma similar todos los años.
+
+El componente irregular, por otro lado, refleja en su comportamiento la inclusión de los outliers, que fueron de tipo aditivo y de cambio transitorio.
+
+Finalmente, a las predicciones realizadas en el punto anterior, se le agrega las predicciones de los componentes tendencial así como de la serie desestacionalizada:
+
+```{r}
+grid.arrange(Plot_8_Prediccion_Serie_Desestacionalizada, Plot_9_Componente_Tendencia, nrow = 2)
+```
+
+Se espera, entonces, que la tendencia de la Cantidad de Clientes con Deuda en el Banco Santander continúe aumentando en el tiempo, más allá de la estacionalidad que caracteriza a la serie.
+
+# Comentarios Finales
+
+Respecto al modelo $\text{SARIMA}(2,1,0)(1,1,0)$ se debe tener en cuenta que:
+
+- Se logra el no rechazo de los Contrastes de Normalidad utilizando siete intervenciones por atípicos, lo que dada la baja cantidad de observaciones disponibles puede resultar un número no deseable.
+
+- El supuesto de residuos no autocorrelacionados puede no estar cumpliéndose, tal y como se refleja en los p-valores del Contraste de Ljung-Box, que resultan cercanos al 5%.
+
+- Dadas dos muestras de entrenamiento se observó la tendencia a subestimar por parte del modelo.
+
+No obstante lo anterior, esta modelización presenta los siguientes puntos a destacar:
+
+- El modelo $\text{SARIMA}$ resultante es de bajo orden, lo que va de la mano con la idea de que los modelos de este tipo sean los mejores a la hora de predecir, además de resultar más parsimoniosos. 
+
+- Dado que no se presenta problemas de homocedasticidad y a que, como se había mencionado al principio del presente trabajo, la transformación logarítmica no logra homogeneizar la Varianza de la serie, se descarta la aplicación de dicha transformación.
+
+- Se logra predecir con éxito a un bajo nivel de confianza dos de tres valores que tomó la serie en 2025: los asociados a los meses de Enero y Marzo. En el caso de Febrero se subpredice el valor que toma efectivamente la serie.
