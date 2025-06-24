@@ -39,6 +39,18 @@ library(tseries)
 library(gtsummary)
 library(latex2exp) # Permite usar TeX() para incluir elementos LaTeX en ggplots.
 library(tsoutliers) # Permite chequear outliers mediante funciones.
+
+# Función para agregar p-valores a modelos Arima para gtsummary
+tidy_arima <- function(x, ...) {
+  # tidy the model
+  ret <- broom::tidy(x, ...)
+  
+  # calculate p-values
+  ret$p.value <- 2 * pnorm(abs(ret$estimate / ret$std.error), lower.tail = FALSE)
+  
+  # return tidied tibble
+  ret
+}
 ```
 
 ```{r}
@@ -208,6 +220,7 @@ A continuación se presentan los resultados de la regresión auxiliar del test y
 # Tabla de regresión del test
 DF_Serie_Original@testreg |>
   tbl_regression(intercept = TRUE) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
   modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
 ```
 
@@ -386,6 +399,7 @@ En primera instancia se planteó el contraste seleccionando la cantidad de rezag
 # Tabla de regresión del test
 DF_Serie_Diferenciada@testreg |>
   tbl_regression(intercept = TRUE) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
   modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
 ```
 
@@ -521,7 +535,8 @@ Modelo_Prueba_2 <- Arima(y = cantidad_clientes_ts,
                     0, 0, NA
                   ),
                   method = "ML")
-tbl_regression(Modelo_Prueba_2, exponentiate = FALSE) |>
+tbl_regression(Modelo_Prueba_2, exponentiate = FALSE, tidy_fun = tidy_arima) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
   modify_caption("Coeficientes del Modelo SARIMA(3,1,0)(0,0,0)[12]")
 
 model_m2_initial_metrics <- data.frame(
@@ -590,7 +605,8 @@ modelo_2 <- Arima(y = cantidad_clientes_ts,
                   xreg = xreg_m2,
                   method = "ML")
                   
-tbl_regression(modelo_2, exponentiate = FALSE) |>
+tbl_regression(modelo_2, exponentiate = FALSE, tidy_fun = tidy_arima) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
   modify_caption("Coeficientes del Modelo SARIMA(2,1,0)(1,1,0)")
 ```
 
@@ -849,7 +865,7 @@ El MASE es una métrica que compara los errores de predicción con los de un mod
 
 Por su ado, el ACF1, una medida de la correlación entre errores a un rezago, muestra que existe poca correlación entre los errores del set de training, mientras que para el set de testeo parece existir sierta correlación negativa.
 
-Por último, la métrica de Theil's U (*Theil’s Inequality Coefficient*) para el set de testeo es mayor que 1, esto sugiere que las predicciones son inexactas.
+Por último, la métrica de Theil's U (*Theil's Inequality Coefficient*) para el set de testeo es mayor que 1, esto sugiere que las predicciones son inexactas.
 
 ## 2024 y 2025
 
