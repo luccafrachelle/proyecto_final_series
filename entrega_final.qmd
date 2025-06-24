@@ -65,15 +65,18 @@ cantidad_clientes_ts_completa <- ts(df$cantidad_clientes, start = c(2018, 12), f
 {{< pagebreak >}}
 
 # Resumen Ejecutivo
+
 El presente trabajo analiza la serie mensual de la cantidad de clientes con deuda vigente en el Banco Santander entre diciembre de 2018 y marzo de 2025, con el objetivo de construir un modelo que represente su comportamiento y permita realizar predicciones a corto plazo.
 
-El análisis inicial reveló una serie no estacionaria con una clara tendencia creciente y un componente estacional. Para estabilizar la varianza y la media, se aplicó una primera diferencia regular ($d=1$) y una primera diferencia estacional de período 12 ($D=1$). El modelo que mejor se ajustó a los datos fue un $\text{SARIMA}(2,1,0)(1,1,0)_{12}$. Un paso crucial en la modelización fue la detección e intervención de siete observaciones atípicas, sin las cuales los supuestos del modelo no se cumplían.
+El análisis inicial reveló una serie no estacionaria con una clara tendencia creciente y un componente estacional. Para estabilizar la varianza y la media, se aplicó una primera diferencia regular ($d=1$) y una primera diferencia estacional ($D=1$). El modelo que mejor se ajustó a los datos fue un $\text{SARIMA}(2,1,0)(1,1,0)$. Un paso crucial en la modelización fue la detección e intervención de siete observaciones atípicas, sin las cuales los supuestos del Modelo no se cumplían.
 
-El modelo final captura adecuadamente la dinámica de la serie. Se observaron incrementos significativos en el número de deudores en los meses de marzo, junio, septiembre y diciembre. Los picos de marzo y septiembre podrían corresponder a períodos vacacionales que incentivan la solicitud de créditos. En el caso de junio y diciembre, se observa un aumento en el número de deudores, posiblemente debido a el pasaje de deudas no vigente a vigentes (se ponen al dia)
+El Modelo Final captura adecuadamente la dinámica de la serie. Se observaron incrementos significativos en el número de deudores en los meses de Marzo, Junio, Septiembre y Diciembre. Los picos de Marzo y Septiembre podrían corresponder a períodos vacacionales que incentivan la solicitud de créditos. En el caso de Junio y Diciembre, se observa un aumento en el número de deudores, posiblemente debido a el pasaje de deudas no vigente a vigentes (se ponen al día). La descomposición de la serie en sus componentes permite observar claramente estos picos.
 
-En cuanto a la capacidad predictiva, el modelo demostró ser útil para horizontes cortos, logrando capturar dos de los tres valores reales reservados para 2025 dentro de intervalos de confianza del 50%. Sin embargo, su precisión disminuye para predicciones más lejanas. En conclusión, el modelo $\text{SARIMA}$.
+En cuanto a la capacidad predictiva, el Modelo demostró ser útil para horizontes cortos, logrando capturar dos de los tres valores reales reservados para 2025 dentro de intervalos de predicción del 50%. Sin embargo, su precisión disminuye para predicciones más lejanas. 
 
+En conclusión, el Modelo $\text{SARIMA}$ planteado resulta satisfactorio, al reflejar el comportamiento de la serie, satisfacer los supuestos requeridos y lograr un desempeño predictivo satisfactorio, ya sea con datos pertenecientes a la muestra como con los disponibles por fuera de la misma.
 
+{{< pagebreak >}}
 
 # Introducción
 
@@ -1114,7 +1117,7 @@ De interés puede ser observar el componente estacional y el irregular por separ
 grid.arrange(Plot_5_Estacional, Plot_6_Irregular, nrow = 2)
 ```
 
-Por un lado, el componente estacional se comporta de forma esperable, presentando, en general, picos de altura similar cada 12 meses. Esto se condice con la estacionalidad identificada al graficar la serie diferenciada de acuerdo al año: cada mes se comporta de forma similar todos los años.
+Por un lado, el componente estacional se comporta de forma esperable, presentando, en general, picos de altura similar cada 12 meses. Esto se condice con la estacionalidad identificada al graficar la serie diferenciada de acuerdo al año: cada mes se comporta de forma similar todos los años. A su vez, los picos ocurren, en general, con una frecuencia trimestral, lo que va de la mano con el hecho de que en los meses de Marzo y Septiembre incluyan períodos vacacionales que incentivan la solicitud de créditos mientras que en Junio y Diciembre aumente en el número de deudores debido a el pasaje de deudas no vigentes a vigentes.
 
 El componente irregular, por otro lado, refleja en su comportamiento la inclusión de los outliers, que fueron de tipo aditivo y de cambio transitorio.
 
@@ -1130,7 +1133,7 @@ Se espera, entonces, que la tendencia de la Cantidad de Clientes con Deuda en el
 
 # Comentarios Finales
 
-Respecto al modelo $\text{SARIMA}(2,1,0)(1,1,0)$ se debe tener en cuenta que:
+Respecto al Modelo $\text{SARIMA}(2,1,0)(1,1,0)$ se debe tener en cuenta que:
 
 - Se logra el no rechazo de los Contrastes de Normalidad utilizando siete intervenciones por atípicos, lo que dada la baja cantidad de observaciones disponibles puede resultar un número no deseable.
 
@@ -1140,7 +1143,7 @@ Respecto al modelo $\text{SARIMA}(2,1,0)(1,1,0)$ se debe tener en cuenta que:
 
 No obstante lo anterior, esta modelización presenta los siguientes puntos a destacar:
 
-- El modelo $\text{SARIMA}$ resultante es de bajo orden, lo que va de la mano con la idea de que los modelos de este tipo sean los mejores a la hora de predecir, además de resultar más parsimoniosos. 
+- El Modelo $\text{SARIMA}$ resultante es de bajo orden, lo que va de la mano con la idea de que los modelos de este tipo sean los mejores a la hora de predecir, además de resultar más parsimoniosos. 
 
 - Dado que no se presenta problemas de homocedasticidad y a que, como se había mencionado al principio del presente trabajo, la transformación logarítmica no logra homogeneizar la Varianza de la serie, se descarta la aplicación de dicha transformación.
 
