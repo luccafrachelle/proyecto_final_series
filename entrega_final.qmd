@@ -110,6 +110,8 @@ A su vez, una inspección inicial de la serie sugiere que la misma podría prese
 
 La variabilidad parece aumentar ligeramente con el nivel de la serie, lo que podría sugerir la necesidad de aplicar una transformación logarítmica a modo de homogeneizar la Varianza de la serie. El uso de dicha transformación se evaluará más adelante tomando como insumo el comportamiento del cuadrado de los residuos de los modelos propuestos.
 
+{{< pagebreak >}}
+
 
 ## Estadísticas Descriptivas
 ```{r}
