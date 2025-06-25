@@ -408,8 +408,6 @@ Considerando que $\text{per}(\omega_j) = \frac{2\pi}{\omega_j}$, entonces se tie
 
 Esto constituye un fundamento para la utilización de $p=3$ en la modelización de la serie diferenciada o de la aplicación de una Primera Diferencia Estacional de período 3, como se había mencionado en el Análisis en el Dominio del Tiempo efectuado anteriormente. 
 
-PREGUNTA: ¿El hecho de que los ciclos que más explican la varianza sean los de período 3 puede ir de la mano con lo que indicaba Lucca de que entran deudores a los 3 meses (2+1)? Esto puede estar bueno comentarlo acá, así como al inicio del documento, para dar un fundamento teórico al hallazgo. 
-
 
 {{< pagebreak >}}
 
