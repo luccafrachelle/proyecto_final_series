@@ -39,6 +39,7 @@ library(tseries)
 library(gtsummary)
 library(latex2exp) # Permite usar TeX() para incluir elementos LaTeX en ggplots.
 library(tsoutliers) # Permite chequear outliers mediante funciones.
+#library(RJDemetra)
 
 # Función para agregar p-valores a modelos Arima para gtsummary
 tidy_arima <- function(x, ...) {
@@ -1173,7 +1174,7 @@ El Modelo resultante es un $\text{SARIMA}(0,1,0)(1,0,1)$, destacándose lo sigui
 
 - El coeficiente $\Theta_1$ asociado a la parte $\text{MA}$ estacional resulta significativo únicamente al 5%.
 
-- Incluye tres outliers, de modo que cumple la proporción deseable de una proporción de intervenciones menor al 5%.
+- Incluye tres outliers, de modo que cumple la proporción deseable de una cantidad de intervenciones menor al 5% del total de observaciones. Los tres atípicos fueron incluídos en el Modelo Original.
 
 - Las tres métricas de información resultan mayores en comparación con el Modelo $\text{SARIMA}(2,1,0)(1,1,0)$ con intervención de 7 atípicos, por ende sería preferible este último desde esa óptica.
 
@@ -1181,10 +1182,10 @@ A continuación puede verse los resultados del `summary` del Modelo sugerido por
 
 ```{r}
 load("./data/Resultados_X13_Automatic_Modelling.Rdata")
-Modelo$regarima$arma
-Modelo$regarima$arima.coefficients
-Modelo$regarima$regression.coefficients
-Modelo$regarima$loglik
+
+kable(model_x13_metrics, caption = r"(Criterios de Información del Modelo sugerido por X13 - SARIMA$(0,1,0)(1,0,1)$)") 
+kable(model_x13_coefs, caption = r"(Coeficientes Estimados del Modelo sugerido por X13 - SARIMA$(0,1,0)(1,0,1)$)") 
+kable(model_x13_regression, caption = r"(Media y Outliers del Modelo sugerido por X13 - SARIMA$(0,1,0)(1,0,1)$)") 
 ```
 
 ### Predicción
