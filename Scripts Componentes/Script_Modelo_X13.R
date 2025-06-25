@@ -51,8 +51,29 @@ Modelo <- x13(cantidad_clientes_ts, # Serie.
 # Nótese la significación y que el ar2 y sar1 tienen los signos cambiados
 #respecto a la función ARIMA .Los polinomios se definen con 
 #signos distintos: help(regarima)
-Modelo$regarima %>% summary
+resumen <- Modelo$regarima %>% summary
+resumen$coefficients$arima
 
+# Métricas:
+model_x13_metrics <- data.frame(
+  AIC = Modelo$regarima$loglik[4,],
+  AICc = Modelo$regarima$loglik[5,],
+  BIC = Modelo$regarima$loglik[6,]
+)
+model_x13_metrics
+
+# Coeficientes:
+model_x13_coefs <- as.data.frame(
+  resumen$coefficients$arima
+) %>% round(4)
+model_x13_coefs
+
+# Regresion:
+model_x13_regression <- as.data.frame(
+  resumen$coefficients$regression
+) %>% round(4)
+model_x13_regression  
+  
 # Tipo de Descomposición:
 Modelo$decomposition$mode # Aditiva. Parece sensato siendo una cantidad.
 
