@@ -68,7 +68,7 @@ cantidad_clientes_ts_completa <- ts(df$cantidad_clientes, start = c(2018, 12), f
 
 El presente trabajo analiza la serie mensual de la cantidad de clientes con deuda vigente en el Banco Santander entre diciembre de 2018 y marzo de 2025, con el objetivo de construir un modelo que represente su comportamiento y permita realizar predicciones a corto plazo.
 
-El análisis inicial reveló una serie no estacionaria con una clara tendencia creciente y un componente estacional. Para estabilizar la varianza y la media, se aplicó una primera diferencia regular ($d=1$) y una primera diferencia estacional ($D=1$). El modelo que mejor se ajustó a los datos fue un $\text{SARIMA}(2,1,0)(1,1,0)$. Un paso crucial en la modelización fue la detección e intervención de siete observaciones atípicas, sin las cuales los supuestos del Modelo no se cumplían.
+El análisis inicial reveló una serie no estacionaria con una clara tendencia creciente y un componente estacional. Para estabilizar la varianza y la media, se aplicó una Primera Diferencia Regular ($d=1$) y una Primera Diferencia Estacional ($D=1$). El modelo que mejor se ajustó a los datos fue un $\text{SARIMA}(2,1,0)(1,1,0)$. Un paso crucial en la modelización fue la detección e intervención de siete observaciones atípicas, sin las cuales los supuestos del Modelo no se cumplían.
 
 El Modelo Final captura adecuadamente la dinámica de la serie. Se observaron incrementos significativos en el número de deudores en los meses de Marzo, Junio, Septiembre y Diciembre. Los picos de Marzo y Septiembre podrían corresponder a períodos vacacionales que incentivan la solicitud de créditos. En el caso de Junio y Diciembre, se observa un aumento en el número de deudores, posiblemente debido a el pasaje de deudas no vigente a vigentes (se ponen al día). La descomposición de la serie en sus componentes permite observar claramente estos picos.
 
@@ -93,23 +93,11 @@ Dada la baja cantidad de observaciones disponibles se utilizará, a los efectos 
 ```{r}
 autoplot(cantidad_clientes_ts_completa) + 
   labs(x = "Fecha", y = "Cantidad 
-       de personas", title = "Serie de Cantidad de Personas con Deuda en Santander") +
+       de personas", title = "Serie de Cantidad de Personas con
+       Deuda en Santander") +
   theme_minimal() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
   theme(panel.grid.minor = element_blank()) 
-
-```
-
-
-```{r}
-## series log
-cantidad_clientes_ts_log <- log(cantidad_clientes_ts)
-autoplot(log(cantidad_clientes_ts_completa)) + 
-  labs(x = "Fecha", y = TeX(r"($\log($Cantidad$)$)"), title = "Serie del Logaritmo de la Cantidad de Personas
-       con Deuda en Santander") +
-  theme_minimal() +
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
-  theme(panel.grid.minor = element_blank())
 
 ```
 
@@ -169,7 +157,7 @@ clientes_pacf
 
 La Función de Autocorrelación Parcial (FACP) muestra un coeficiente significativo en el primer rezago y luego decae rápidamente, no habiendo otro rezago que resulte significativo al nivel de significación usual del 5%. 
 
-Esto podría sugerir un componente $\text{AR}(1)$ si la serie fuese estacionaria. Sin embargo, dada la FAC planteada anteriormente así como los comentarios realizados en base a esta y al gráfico de la propia serie, se concluye de este primer análisis del Dominio del Tiempo en la posibilidad de aplicar, al menos, una primera diferencia regular a la misma.
+Esto podría sugerir un componente $\text{AR}(1)$ si la serie fuese estacionaria. Sin embargo, dada la FAC planteada anteriormente así como los comentarios realizados en base a esta y al gráfico de la propia serie, se concluye de este primer análisis del Dominio del Tiempo en la posibilidad de aplicar, al menos, una Primera Diferencia Regular a la misma.
 
 {{< pagebreak >}}
 
@@ -225,26 +213,11 @@ A la hora de determinar si la tendencia puede ser modelada de forma determiníst
 
 #### Dickey-Fuller Aumentado
 
-En primera instancia se planteó el contraste seleccionando la cantidad de rezagos por medio de Criterios de Información (AIC y BIC) lo que resulta en la elección de $p = 1$. Con este valor, sin embargo, no se logró el comportamiento deseado de los residuos (que los mismos no se encuentren autocorrelacionados), lo que motivó el ensayo con varios valores de lags adicionales. Esto resultó en la elección de $p = 2$, con ambos coeficientes significativos a los niveles de significación usuales.
+A continuación se presentan los estadísticos de la prueba:
 
 ```{r}
 DF_Serie_Original <- ur.df(y = cantidad_clientes_ts, type = "trend", lags = 2)
-plot(DF_Serie_Original)
-```
 
-{{< pagebreak >}}
-
-A continuación se presentan los resultados de la regresión auxiliar del test y los estadísticos de prueba:
-
-```{r}
-# Tabla de regresión del test
-DF_Serie_Original@testreg |>
-  tbl_regression(intercept = TRUE) |>
-  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
-  modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
-```
-
-```{r}
 # Tabla de estadísticos y valores críticos
 df_results <- data.frame(
   "Estadístico" = DF_Serie_Original@teststat[1,],
@@ -257,10 +230,9 @@ rownames(df_results) <- c("tau3 (con tendencia)", "phi2", "phi3")
 kable(df_results, caption = "Resultados del Test de Dickey-Fuller Aumentado")
 ```
 
-Del contraste de Dickey-Fuller aumentado se concluye que:
+Del contraste de Dickey-Fuller Aumentado se concluye que:
 
-- No se rechaza la Hipótesis Nula de que la Serie presente una raíz unitaria a ninguno de los niveles de significación planteados. De esta manera se tiene un respaldo estadístico para aplicar la Primera Diferencia Regular.
-
+- No se rechaza la Hipótesis Nula de que la serie presente una raíz unitaria a ninguno de los niveles de significación planteados. De esta manera se tiene un respaldo estadístico para aplicar la Primera Diferencia Regular.
 
 {{< pagebreak >}}
 
@@ -278,7 +250,7 @@ kpss_results_df <- data.frame(
 kable(kpss_results_df, caption = "Resultados del Test KPSS (con tendencia)")
 ```
 
-Como resultado se rechaza la Hipótesis Nula de que la Serie sea Integrada de Orden $0$, lo que nuevamente da un respaldo estadístico para la aplicación de la Primera Diferencia Regular en los datos.
+Como resultado se rechaza la Hipótesis Nula de que la serie sea Integrada de Orden $0$, lo que nuevamente da un respaldo estadístico para la aplicación de la Primera Diferencia Regular en los datos.
 
 {{< pagebreak >}}
 
@@ -289,7 +261,8 @@ diff_cantidad_clientes_ts <- diff(cantidad_clientes_ts, differences = 1)
 autoplot(diff_cantidad_clientes_ts) + 
   labs(x = "Fecha", y = "Cantidad de 
        Personas", 
-       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       title = "Serie de Cantidad de Personas con
+       Deuda en Santander",
        subtitle = "Primera Diferencia Regular") +
   geom_hline(aes(yintercept = mean(diff_cantidad_clientes_ts)), colour = "red") +
   theme_minimal() +
@@ -309,7 +282,8 @@ Considerando los años por separado, como se plantea en el gráfico siguiente, e
 ggseasonplot(diff_cantidad_clientes_ts) +
   labs(x = "Fecha", y = "Cantidad de 
        Personas", 
-       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       title = "Serie de Cantidad de Personas con
+       Deuda en Santander",
        subtitle = "Primera Diferencia Regular",
        color = "Año") +
   theme_minimal() +
@@ -323,7 +297,8 @@ Separando los datos de acuerdo a los meses se desprende que los meses de Marzo, 
 ggsubseriesplot(diff_cantidad_clientes_ts) +
   labs(x = "Mes", y = "Cantidad de 
        Personas", 
-       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       title = "Serie de Cantidad de Personas con
+       Deuda en Santander",
        subtitle = "Primera Diferencia Regular") +
   theme_minimal() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
@@ -404,10 +379,7 @@ grid.arrange(Plot_Espectro_Serie_Diferenciada, Plot_Espectro_Serie_Diferenciada_
 
 El Espectro también muestra como la Primera Diferencia Regular elimina el componente tendencial, al presentar bajos valores en las frecuencias más bajas. No obstante, es posible observar como se realza el peso de las frecuencias que se encuentran en torno a $\omega_{\max} = 2.10$.
 
-Considerando que $\text{per}(\omega_j) = \frac{2\pi}{\omega_j}$, entonces se tiene que $\text{per}(\omega_{\max}) \approx 3$, lo que quiere decir que la aplicación de la Primera diferencia Regular tuvo como resultado el incrementar la importancia de los ciclos que se repiten cada 3 meses a la hora de explicar la variabilidad de la serie. 
-
-Esto constituye un fundamento para la utilización de $p=3$ en la modelización de la serie diferenciada o de la aplicación de una Primera Diferencia Estacional de período 3, como se había mencionado en el Análisis en el Dominio del Tiempo efectuado anteriormente. 
-
+Considerando que $\text{per}(\omega_j) = \frac{2\pi}{\omega_j}$, entonces se tiene que $\text{per}(\omega_{\max}) \approx 3$, lo que quiere decir que la aplicación de la Primera Diferencia Regular tuvo como resultado el incrementar la importancia de los ciclos que se repiten cada 3 meses a la hora de explicar la variabilidad de la serie. 
 
 {{< pagebreak >}}
 
@@ -422,19 +394,7 @@ KPSS_Serie_Diferenciada <- ur.kpss(y = diff_cantidad_clientes_ts, type = "mu")
 
 Se procedió a llevar los contrastes de Dickey-Fuller Aumentado y KPSS a efectos de determinar si es necesaria la aplicación de una Segunda Diferencia Regular en la serie.
 
-
-
 #### Dickey-Fuller Aumentado
-
-En primera instancia se planteó el contraste seleccionando la cantidad de rezagos por medio de Criterios de Información (AIC y BIC) lo que resulta en la elección de $p = 1$. Con dicha cantidad de rezagos los residuos no se encuentran autocorrelacionados, por lo que, al contrario de la aplicación del contraste en la serie original, no se realiza el ensayo con otros lags.
-
-```{r}
-# Tabla de regresión del test
-DF_Serie_Diferenciada@testreg |>
-  tbl_regression(intercept = TRUE) |>
-  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
-  modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
-```
 
 ```{r}
 # Tabla de estadísticos y valores críticos
@@ -449,9 +409,9 @@ rownames(df_results) <- c("tau2 (con constante)", "phi1")
 kable(df_results, caption = "Resultados del Test de Dickey-Fuller Aumentado")
 ```
 
-Del contraste de Dickey-Fuller aumentado se concluye que:
+Del contraste de Dickey-Fuller Aumentado se concluye que:
 
-- Se rechaza la Hipótesis Nula de que la Serie presente una raíz unitaria en todos los niveles de significación planteados. De esta manera se tiene un respaldo estadístico para continuar trabajando con la serie diferenciada, en el sentido de que la misma sea estacionaria.
+- Se rechaza la Hipótesis Nula de que la serie presente una raíz unitaria en todos los niveles de significación planteados. De esta manera se tiene un respaldo estadístico para continuar trabajando con la serie diferenciada, en el sentido de que la misma sea estacionaria.
 
 {{< pagebreak >}}
 
@@ -480,7 +440,8 @@ diff_estacional_anual <- diff(diff_cantidad_clientes_ts, lag = 12)
 autoplot(diff_estacional_anual) +
   labs(x = "Fecha", y = "Cantidad de 
        Personas", 
-       title = "Serie de Cantidad de Personas con Deuda en Santander",
+       title = "Serie de Cantidad de Personas con 
+       Deuda en Santander",
        subtitle = "Primera Diferencia Regular y Primera Diferencia Estacional (Anual)") +
   theme_minimal() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
@@ -490,14 +451,14 @@ autoplot(diff_estacional_anual) +
 ```{r}
 diff_estacional_anual_acf <- ggAcf(diff_estacional_anual, lag.max = 24, type = "correlation") +
     labs(x = "k (Rezago)", 
-       y = TeX(r"($\hat{\rho_{k}}$)"), title = "FAC de la Serie Diferenciada (Regular y Estacional Anual)") +
+       y = TeX(r"($\hat{\rho_{k}}$)"), title = "FAC de la Serie Diferenciada (Regular y Estacional)") +
   theme_minimal() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
   theme(panel.grid.minor = element_blank())
 
 diff_estacional_anual_pacf <- ggAcf(diff_estacional_anual, lag.max = 24, type = "partial") +
     labs(x = "k (Rezago)", 
-       y = TeX(r"($\hat{\alpha_{k}}$)"), title = "FACP de la Serie Diferenciada (Regular y Estacional Anual)") +
+       y = TeX(r"($\hat{\alpha_{k}}$)"), title = "FACP de la Serie Diferenciada (Regular y Estacional)") +
   theme_minimal() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
   theme(panel.grid.minor = element_blank())
@@ -506,7 +467,7 @@ grid.arrange(diff_estacional_anual_acf, diff_estacional_anual_pacf)
 ```
 
 
-En este caso corresponde observar la FAC y FACP en los múltiplos de $12$. Se observa la significación tanto del primer coeficiente de autocorrelación como de autocorrelación parcial, lo que sugiere la utilización de $(P = 1, D = 1, Q = 0)[12]$ o $(P = 0, D = 1, Q = 1)[12]$ para la parte estacional de un primer modelo $\text{SARIMA}$.
+En este caso corresponde observar la FAC y FACP en los múltiplos de $12$. Se observa la significación tanto del primer coeficiente de autocorrelación como de autocorrelación parcial, lo que sugiere la utilización de $(P = 1, D = 1, Q = 0)$ o $(P = 0, D = 1, Q = 1)$ para la parte estacional de un primer modelo $\text{SARIMA}$.
 
 ```{r}
 # Espectro de la Serie:
@@ -559,7 +520,7 @@ A continuación, se presenta el modelo $\text{SARIMA}$ finalista seleccionado pa
 
 ## Procedimiento de Obtención del Modelo
 
-Se partió de un Modelo $\text{SARIMA}(3,1,0)(0,0,0)[12]$ de acuerdo a lo expuesto en el análisis de la FAC y FACP desarrollado previamente. En particular, se había identificado:
+Se partió de un Modelo $\text{SARIMA}(3,1,0)(0,0,0)$ de acuerdo a lo expuesto en el análisis de la FAC y FACP desarrollado previamente. En particular, se había identificado:
 
 - Coeficientes significativos en la FAC y FACP en el tercer rezago, así como significativos y con decaimiento a medida que aumenta el rezago en los que resultan múltiplos de 3. De esta manera se desprende utilizar $p = 3$ con $\phi_1 = \phi_2 = 0$ a la hora de modelar la parte regular de la serie.
 
@@ -579,7 +540,7 @@ Modelo_Prueba_2 <- Arima(y = cantidad_clientes_ts,
                   method = "ML")
 tbl_regression(Modelo_Prueba_2, exponentiate = FALSE, tidy_fun = tidy_arima) |>
   add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
-  modify_caption("Coeficientes del Modelo SARIMA(3,1,0)(0,0,0)[12]")
+  modify_caption("Coeficientes del Modelo SARIMA(3,1,0)(0,0,0)")
 
 model_m2_initial_metrics <- data.frame(
   AIC = Modelo_Prueba_2$aic,
@@ -605,11 +566,11 @@ Una primera observación de los residuos estandarizados indicó la presencia de 
 
 - Cambio Transitorio en Junio de 2024.
 
-Recuérdese que se había planteado durante la inspección inicial de la serie la posibilidad de que hubieran observaciones atípicas a fines de los años 2019, 2021 y 2023, lo que es consistente con el resultado anterior^[Se utilizó el paquete `tso` a efectos de identificar los outliers y su tipo.]
+Recuérdese que se había planteado durante la inspección inicial de la serie la posibilidad de que hubieran observaciones atípicas a fines de los años 2019, 2021 y 2023, lo que es consistente con el resultado anterior^[Se utilizó el paquete `tso` a efectos de identificar los outliers y su tipo.].
 
 Si bien la cantidad de outliers intervenidos supera la proporción límite, arbitraria pero recomendada, de intervenciones (9.5% aproximadamente contra 5%), tiene como resultado el cumplimiento de varios supuestos en la etapa de diagnóstico, aunque requiriendo previamente la redefinición del orden del modelo.
 
-Realizadas las intervenciones se modela la estacionalidad, por medio de $P=1$ o $Q=1$, en base a los observaciones realizadas sobre la FAC y FACP de la serie resultante de aplicar la Primera Diferencia Regular y Estacional. Como resultado se pierde la significación del coeficiente $\phi_3$ de la parte regular, lo que motiva la redefinición del modelo en un $\text{SARIMA}(2,1,0)(1,1,0)[12]$.
+Realizadas las intervenciones se modela la estacionalidad, por medio de $P=1$ o $Q=1$, en base a los observaciones realizadas sobre la FAC y FACP de la serie resultante de aplicar la Primera Diferencia Regular y Estacional. Como resultado se pierde la significación del coeficiente $\phi_3$ de la parte regular, lo que motiva la redefinición del modelo en un $\text{SARIMA}(2,1,0)(1,1,0)$.
 
 Por un lado, en la parte regular no resulta significativo el coeficiente $\phi_1$, por lo que se lo fijó en $0$. Por otro lado, en la parte estacional se decidió utilizar $P=1,D=1,Q=0$ en vez de $P=0,D=1,Q=1$ dado que el coeficiente de la parte $\text{AR}$ asociado a la primera modelización presenta un menor p-valor que el coeficiente de la parte $\text{MA}$ de la segunda^[La utilización de un $\text{AR}(1)$ o $\text{MA}(1)$ en la parte estacional produce modelos con Criterios de Información prácticamente iguales.].
 
@@ -785,11 +746,11 @@ $$
 (1-L)(1-L^{12})(1-L^2{\phi}_2)(1-L{\Phi}_1)Y_t = \epsilon_t
 $$
 
-Donde $Y_t$ denota a la serie de datos original, $L$ al operador de retardos y $\epsilon_t$ un ruido blanco. ${\phi}_2$ y ${\Phi}_1$ son los coeficientes respectivas de las partes AR del componenente Regular y Estacional del Modelo.
+Donde $Y_t$ denota a la serie de datos original, $L$ al operador de rezagos y $\epsilon_t$ un ruido blanco. ${\phi}_2$ y ${\Phi}_1$ son los coeficientes respectivos de las partes AR del componente regular y estacional del Modelo.
 
 ## Enero, Febrero y Marzo de 2025
 
-Se realiza predicciones para los meses de Enero, Febrero y Marzo de 2025, a efectos de contrastarla con las tres observaciones que no se utilizaron a la hora de ajustar el modelo.
+Se realiza predicciones para los meses de Enero, Febrero y Marzo de 2025, a efectos de contrastarla con las tres observaciones que no se utilizaron a la hora de ajustar el Modelo.
 
 ```{r}
 # Crear matriz de regresores futuros, ceros en caso de AO, pero en caso de TS que continuen el decaimiento.
@@ -835,6 +796,8 @@ ggplot(Comparacion_Prediccion_Realidad_Modelo_2) +
   ) +
   guides(color = guide_legend(position = "bottom")) 
 ```
+
+Se predice que la Cantidad de Clientes con Deuda Vigente en el Banco Santander aumentará, respecto al mes de Diciembre de 2024, en un 0.21%, 0.22% y 1.53% para los meses de Enero, Febrero y Marzo de 2025, respectivamente. En la realidad, dichas variaciones porcentuales fueron de 0.27%, 1,90% y 1.81% respectivamente, lo que comienza a evidenciar una característica que se repetirá durante el siguiente análisis: la subestimación a la hora de predecir por parte del Modelo planteado.
 
 ```{r}
 Predicciones_Modelo_2_Tabla_ICs <- forecast(
@@ -1103,7 +1066,7 @@ Mediante la función `x13` (asociada al método estadístico del mismo nombre) d
 Como resultado se obtuvo la descomposición de la serie, lo que permitió computar una serie desestacionalizada, que se muestra a continuación:
 
 ```{r}
-load("Componentes/Salidas_Script_Componentes.Rdata")
+load("./data/Salidas_Script_Componentes.Rdata")
 grid.arrange(Plot_1_Serie_Original, Plot_2_Serie_Desestacionalizada, Plot_4_SA_T, nrow = 3)
 ```
 
@@ -1146,3 +1109,102 @@ No obstante lo anterior, esta modelización presenta los siguientes puntos a des
 - Dado que no se presenta problemas de homocedasticidad y a que, como se había mencionado al principio del presente trabajo, la transformación logarítmica no logra homogeneizar la Varianza de la serie, se descarta la aplicación de dicha transformación.
 
 - Se logra predecir con éxito a un bajo nivel de confianza dos de tres valores que tomó la serie en 2025: los asociados a los meses de Enero y Marzo. En el caso de Febrero se subpredice el valor que toma efectivamente la serie.
+
+{{< pagebreak >}}
+
+# Anexo
+
+## Serie en Logaritmos:
+
+```{r}
+## series log
+cantidad_clientes_ts_log <- log(cantidad_clientes_ts)
+autoplot(log(cantidad_clientes_ts_completa)) + 
+  labs(x = "Fecha", y = TeX(r"($\log($Cantidad$)$)"), title = "Serie del Logaritmo de la Cantidad de Personas
+       con Deuda en Santander") +
+  theme_minimal() +
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(panel.grid.minor = element_blank())
+```
+
+## Dickey-Fuller Aumentado
+
+### Serie Original: Determinación de la Cantidad de Rezagos y Regresión Auxiliar
+
+En primera instancia se planteó el contraste seleccionando la cantidad de rezagos por medio de Criterios de Información (AIC y BIC) lo que resulta en la elección de $p = 1$. Con este valor, sin embargo, no se logró el comportamiento deseado de los residuos (que los mismos no se encuentren autocorrelacionados), lo que motivó el ensayo con varios valores de lags adicionales. Esto resultó en la elección de $p = 2$, con ambos coeficientes significativos a los niveles de significación usuales.
+
+```{r}
+DF_Serie_Original <- ur.df(y = cantidad_clientes_ts, type = "trend", lags = 1)
+plot(DF_Serie_Original)
+
+DF_Serie_Original <- ur.df(y = cantidad_clientes_ts, type = "trend", lags = 2)
+plot(DF_Serie_Original)
+
+# Tabla de regresión del test
+DF_Serie_Original@testreg |>
+  tbl_regression(intercept = TRUE) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
+  modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
+```
+
+### Serie Diferenciada: Determinación de la Cantidad de Rezagos y Regresión Auxiliar
+
+En primera instancia se planteó el contraste seleccionando la cantidad de rezagos por medio de Criterios de Información (AIC y BIC) lo que resulta en la elección de $p = 1$. Con dicha cantidad de rezagos los residuos no se encuentran autocorrelacionados, por lo que, al contrario de la aplicación del contraste en la serie original, no se realiza el ensayo con otros lags.
+
+```{r}
+plot(DF_Serie_Diferenciada)
+
+# Tabla de regresión del test
+DF_Serie_Diferenciada@testreg |>
+  tbl_regression(intercept = TRUE) |>
+  add_significance_stars(hide_ci = FALSE, hide_p = FALSE) |>
+  modify_caption("Regresión del Test de Dickey-Fuller Aumentado")
+```
+
+## Modelización Automática por Medio de la Función "x13"
+
+Se procedió a utilizar la función `x13` para obtener una sugerencia de modelo y compararlo, en su desempeño predictivo para los tres primeros meses de 2025, con el Modelo Final planteado en la parte principal del trabajo.
+
+### Regresión ARIMA
+
+El Modelo resultante es un $\text{SARIMA}(0,1,0)(1,0,1)$, destacándose lo siguiente:
+
+- Incluye una media en la especificación.
+
+- El coeficiente $\Theta_1$ asociado a la parte $\text{MA}$ estacional resulta significativo únicamente al 5%.
+
+- Incluye tres outliers, de modo que cumple la proporción deseable de una proporción de intervenciones menor al 5%.
+
+- Las tres métricas de información resultan mayores en comparación con el Modelo $\text{SARIMA}(2,1,0)(1,1,0)$ con intervención de 7 atípicos, por ende sería preferible este último desde esa óptica.
+
+A continuación puede verse los resultados del `summary` del Modelo sugerido por `x13`:
+
+```{r}
+load("./data/Resultados_X13_Automatic_Modelling.Rdata")
+Modelo$regarima$arma
+Modelo$regarima$arima.coefficients
+Modelo$regarima$regression.coefficients
+Modelo$regarima$loglik
+```
+
+### Predicción
+
+La predicción de los primeros tres meses de 2025 tiene como resultado las siguientes métricas:
+
+```{r}
+kable(acc_x13, caption = r"(Métricas de Predicción del Modelo sugerido por X13 - SARIMA$(0,1,0)(1,0,1)$)")
+```
+
+Recordando las del Modelo planteado por el equipo:
+
+```{r}
+kable(acc1, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
+```
+
+Se puede concluir que el Modelo sugerido por `x13` también subestima a la hora de predecir, lo que puede apreciarse mediante las métricas de ME y MAE así como en el gráfico a continuación, aunque lo hace de forma más notoria que el Modelo Original, lo que queda evidenciado por los valores más altos en esas métricas en conjunto con el MPE y MAPE.
+
+```{r}
+Plot_Prediccion_Serie
+```
+
+No obstante, presenta un RMSE menor que el Modelo Original, de modo que al penalizar los errores de mayor tamaño se tendría un resultado predictivo mejor para el Modelo de `x13`.
