@@ -2,7 +2,7 @@
 title: "Entrega Final - Series Cronológicas"
 subtitle: "Facultad de Ciencias Económicas y Administración - 2025 - UDeLaR"
 author: "Leandro Berrueta, Lucca Frachelle, Cecilia Waksman"
-date: today
+# date: today
 fig-align: center
 warning: false
 message: false
@@ -66,9 +66,13 @@ cantidad_clientes_ts_completa <- ts(df$cantidad_clientes, start = c(2018, 12), f
 
 # Introducción
 
-El presente trabajo se desarrollará en base a la serie mensual de la cantidad de clientes con deuda vigente en el Banco Santander durante el período de Diciembre 2018 a Marzo 2025, proveniente de la central de riesgos que se informa al Banco Central del Uruguay (BCU). La serie se encuentra constituida, entonces, por 76 observaciones. 
+El presente trabajo se desarrollará en base a la serie mensual de la cantidad de clientes con deuda vigente en el Banco Santander durante el período de Diciembre 2018 a Marzo 2025, proveniente de la central de riesgos que se informa al Banco Central del Uruguay (BCU). 
 
-Dada la baja cantidad de observaciones disponibles se utilizará, a los efectos de identificar el modelo que logre representar el comportamiento de la serie, los datos de hasta Diciembre del 2024 inclusive (73 observaciones en total). Las tres observaciones restantes, referidas al año corriente, serán utilizadas con el fin de contrastar el desempeño de la predicción.
+La serie se encuentra constituida por 76 observaciones. 
+
+Dada la baja cantidad de observaciones disponibles se utilizará, a los efectos de identificar el modelo que logre representar el comportamiento de la serie, los datos de hasta Diciembre del 2024 inclusive (73 observaciones en total). 
+
+Las tres observaciones restantes, referidas al año 2025, serán utilizadas con el fin de contrastar el desempeño de la predicción.
 
 ## Gráfico de la Serie Temporal
 
@@ -82,16 +86,6 @@ autoplot(cantidad_clientes_ts_completa) +
   theme(panel.grid.minor = element_blank()) 
 
 ```
-
-
-## Estadísticas Descriptivas
-```{r}
-cantidad_clientes_ts %>%  
-  summary() %>%  
-  enframe(name = "Estadística", value = "Valor") |> 
-  kable(caption = "Estadísticas Descriptivas de la Serie de Cantidad de Personas con Deuda") 
-```
-
 
 # Identificación del Modelo
 
@@ -112,7 +106,7 @@ La FAC decrece lentamente y de forma persistente, con coeficientes de autocorrel
 
 Además, las autocorrelaciones significativas en rezagos altos sugieren la presencia de una tendencia.
 
-## Análisis en el Dominio del Tiempo: Función de Autocorrelación Parcial (FACP)
+### Análisis en el Dominio del Tiempo: Función de Autocorrelación Parcial (FACP)
 
 ```{r}
 clientes_pacf <- ggAcf(cantidad_clientes_ts, lag.max = 24, type = "partial") + 
@@ -167,7 +161,7 @@ Plot_Espectro_Suavizado <- ggplot(Espectro_Serie_Tibble) +
   theme_minimal() +
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
   guides(color = guide_legend(position = "bottom"))
-grid.arrange(Plot_Espectro, Plot_Espectro_Suavizado, nrow = 2)
+Plot_Espectro_Suavizado
 ```
 
 Mediante el Periodograma Suavizado de la serie es posible respaldar la idea de que la misma presenta una tendencia que debería ser modelada. 
@@ -238,9 +232,9 @@ autoplot(diff_cantidad_clientes_ts) +
 
 La Primera Diferencia Regular adquiere un comportamiento más próximo al estacionario que la serie original. 
 
-- La tendencia ha sido eliminada,
+- La tendencia ha sido eliminada.
 
-- La Media parece ser constante,
+- La Media parece ser constante.
 
 - La Varianza no se comporta de forma constante, lo que sugiere la posible presencia de datos atípicos, particularmente a fines de los años 2019, 2021 y 2023.
 
@@ -338,22 +332,15 @@ Plot_Espectro_Serie_Diferenciada_Suavizado <- ggplot(Espectro_Serie_Diferenciada
   theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
   guides(color = guide_legend(position = "bottom"))
 
-
-Plot_Espectro_Serie_Diferenciada
 ```
-
----
 
 ```{r}
 Plot_Espectro_Serie_Diferenciada_Suavizado
 ```
 
+La Primera Diferencia Regular elimina el componente tendencial, al presentar bajos valores en las frecuencias más bajas.
 
-Se mustrea que la Primera Diferencia Regular elimina el componente tendencial, al presentar bajos valores en las frecuencias más bajas.
-
-Se realza el peso de las frecuencias que se encuentran en torno a $\omega_{\max} = 2.10$.
-
-Considerando que $\text{per}(\omega_j) = \frac{2\pi}{\omega_j}$, entonces se tiene que $\text{per}(\omega_{\max}) \approx 3$, lo que quiere decir que la aplicación de la Primera Diferencia Regular tuvo como resultado el incrementar la importancia de los ciclos que se repiten cada 3 meses a la hora de explicar la variabilidad de la serie. 
+Se realza el peso de las frecuencias que se encuentran en torno a $\omega_{\max} = 2.10$ asociadas a ciclos de período $3$. Se incrementó la importancia de los ciclos que se repiten cada 3 meses a la hora de explicar la variabilidad de la serie. 
 
 ## Contrastes de Raíces Unitarias para la Segunda Diferencia Regular
 
@@ -481,7 +468,7 @@ grid.arrange(Plot_Espectro_Serie_Diferenciada_12, Plot_Espectro_Serie_Diferencia
 
 La Primera Diferencia Regular en conjunto con la Primera Diferencia Estacional resultan en un Periodograma Suavizado semejante al de un Ruido Blanco. 
 
-Dada dicha particularidad se observó el comportamiento del Periodograma Original, donde se alcanzan picos sucesivos en las frecuencias más altas, lo que está asociado a ciclos de período bajo.  
+Observése el comportamiento del Periodograma Original, donde se alcanzan picos sucesivos en las frecuencias más altas, lo que está asociado a ciclos de período bajo.  
 
 # Modelo Final Propuesto: SARIMA(2,1,0)(1,1,0)
 
@@ -508,6 +495,8 @@ model_m2_initial_metrics <- data.frame(
 ## Outliers
 
 \
+
+Se partió de un Modelo $\text{SARIMA}(3,1,0)(0,0,0)$ con $\phi_1 = \phi_2 = 0$ en base al análisis anterior.
 
 Los residuos estandarizados indicaron la presencia de outliers. A su vez, se rechazó la Hipótesis Nula de Normalidad en los contrastes de Shapiro-Wilk y Jarque-Bera, lo que motivó la intervención de los siguientes puntos anómalos:
 
@@ -579,6 +568,13 @@ model_m2_metrics <- data.frame(
   AICc = modelo_2$aicc,
   BIC = modelo_2$bic
 )
+
+kable(model_m2_initial_metrics, caption = "Criterios de Información del Modelo SARIMA(3,1,0)(0,0,0)")
+```
+
+\
+
+```{r}
 kable(model_m2_metrics, caption = "Criterios de Información del Modelo SARIMA(2,1,0)(1,1,0)")
 ```
 
@@ -693,16 +689,19 @@ for(i in c(3, 6, 9, 12, 24)){
 };rm(i)
 ```
 
-La significación de los coeficientes de autocorrelación y autocorrelación parcial de orden 6, lo que sugiere el incumplimiento del supuesto de homocedasticidad.
+La significación de los coeficientes de autocorrelación y autocorrelación parcial de orden 6 sugiere el posible incumplimiento del supuesto de homocedasticidad.
 
 ---
+
 ```{r}
-kable(ljung_box_df_m2, caption = "Test de Ljung-Box para el Cuadrado de los Residuos del Modelo SARIMA(2,1,0)(1,1,0) (Rezagos 3, 6, 9, 12 y 24)")
+kable(ljung_box_df_m2_residuos_cuadrado, caption = "Test de Ljung-Box para el Cuadrado de los Residuos del Modelo SARIMA(2,1,0)(1,1,0) (Rezagos 3, 6, 9, 12 y 24)")
 ```
 
 \
 
-No obstante, los resultados del contraste de Ljung-Box hacen que se desestime esta idea.
+Los resultados del contraste de Ljung-Box respaldan esta idea, si se considera los rezagos más pequeños.
+
+
 
 ## Contraste de Media Nula de los Residuos
 
@@ -724,7 +723,9 @@ $$
 (1-L)(1-L^{12})(1-L^2{\phi}_2)(1-L{\Phi}_1)Y_t = \epsilon_t
 $$
 
-Donde $Y_t$ denota a la serie de datos original, $L$ al operador de rezagos y $\epsilon_t$ un ruido blanco. ${\phi}_2$ y ${\Phi}_1$ son los coeficientes respectivos de las partes AR del componente regular y estacional del Modelo.
+Donde $Y_t$ denota a la serie de datos original, $L$ al operador de rezagos y $\epsilon_t$ un ruido blanco. 
+
+${\phi}_2$ y ${\Phi}_1$ son los coeficientes respectivos de las partes AR del componente regular y estacional del Modelo.
 
 ## Enero, Febrero y Marzo de 2025
 
@@ -783,9 +784,8 @@ ggplot(Comparacion_Prediccion_Realidad_Modelo_2) +
 
 Se predice que la Cantidad de Clientes con Deuda Vigente en el Banco Santander aumentará, respecto al mes de Diciembre de 2024, en un 0.21%, 0.22% y 1.53% para los meses de Enero, Febrero y Marzo de 2025, respectivamente. En la realidad, dichas variaciones porcentuales fueron de 0.27%, 1,90% y 1.81% respectivamente, lo que comienza a evidenciar una característica que se repetirá durante el siguiente análisis: la subestimación a la hora de predecir por parte del Modelo planteado.
 
-### Inrtervalos de Confianza
+### Inrtervalos de Predicción
 
-\
 
 ```{r}
 Predicciones_Modelo_2_Tabla_ICs <- forecast(
@@ -803,11 +803,11 @@ Tabla_ICs_1 <- (Predicciones_Modelo_2_Tabla_ICs %>% as.tibble %>% janitor::clean
   mutate(Capturado = ifelse((lo_50 <= Realidad)&(hi_50 >= Realidad), "Si", "No")) %>% 
   select(Fecha, `Límite Inferior 50%` = lo_50, Predicción = Prediccion, `Límite Superior 50%` = hi_50, Realidad, Capturado)
 
-kable(Tabla_ICs_1, caption = "Intervalos de Confianza al 50% de los Primeros 3 Meses de 2025 contra Realidad")
+kable(Tabla_ICs_1, caption = "Intervalos de Predicción al 50% de los Primeros 3 Meses de 2025 contra Realidad")
 
 ```
 
----
+\
 
 ```{r}
 
@@ -822,10 +822,10 @@ Tabla_ICs_4 <- (Predicciones_Modelo_2_Tabla_ICs %>% as.tibble %>% janitor::clean
   mutate(Capturado = ifelse((lo_96 <= Realidad)&(hi_96 >= Realidad), "Si", "No")) %>% 
   select(Fecha, `Límite Inferior 96%` = lo_96, Predicción = Prediccion, `Límite Superior 96%` = hi_96, Realidad, Capturado)
 
-kable(Tabla_ICs_4, caption = "Intervalos de Confianza al 96% de los Primeros 3 Meses de 2025 contra Realidad")
+kable(Tabla_ICs_4, caption = "Intervalos de Predicción al 96% de los Primeros 3 Meses de 2025 contra Realidad")
 ```
 
-\
+---
 
 Se puede apreciar que se captura al 50% de confianza el valor real de la serie en los meses de Enero y Marzo de 2025. Sin embargo, el valor de Febrero de 2025 requiere utilizar un intervalo de amplitud mayor asociado a una confianza aproximada del 96%.
 
@@ -842,7 +842,7 @@ kable(acc1, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)")
 
 ## 2024 y 2025
 
-También se realiza predicciones para el 2024 y los primeros tres meses de 2025, utilizando el mismo modelo propuesto pero entrenándolo con las observaciones disponibles hasta diciembre de 2023.
+También se realiza predicciones para el 2024 y los primeros tres meses de 2025, utilizando el mismo modelo propuesto pero entrenándolo con las observaciones disponibles hasta Diciembre de 2023.
 
 ```{r}
 # Predicción afuera de la Muestra:
@@ -908,7 +908,7 @@ ggplot(Predicciones_Dentro_Muestra_Tibble_m2) +
 ```
 
 
-De forma similar al modelo anterior se nota una diferencia en la pendiente de la predicción puntual y la realidad. Nuevamente, la primera tiende a ser cada vez menor que la segunda a medida que aumenta el horizonte de predicción. 
+Se nota una diferencia en la pendiente de la predicción puntual y la realidad. La primera tiende a ser cada vez menor que la segunda a medida que aumenta el horizonte de predicción. 
 
 ### Métricas sobre los errores de predicción
 
@@ -1009,9 +1009,11 @@ load("./data/Salidas_Script_Componentes.Rdata")
 grid.arrange(Plot_1_Serie_Original, Plot_2_Serie_Desestacionalizada, Plot_4_SA_T, nrow = 3)
 ```
 
+---
+
 En los dos primeros gráficos se puede notar como la serie se ha vuelto más suave, no reflejando las periodicidades de la serie original. 
 
-En el tercer gráfico se compara la serie desestacionalizada con el componente tendencial, siendo posible identificar los apartamientos de la tendencia debido a los outliers destacados en el desarrollo del presente trabajo.
+En el tercer gráfico se compara la serie desestacionalizada con el componente tendencial, siendo posible identificar los apartamientos de la tendencia debido a los outliers destacados previamente.
 
 ### Componente estacional
 
@@ -1060,6 +1062,12 @@ No obstante lo anterior, esta modelización presenta los siguientes puntos a des
 
 - El Modelo $\text{SARIMA}$ resultante es de bajo orden, lo que va de la mano con la idea de que los modelos de este tipo sean los mejores a la hora de predecir, además de resultar más parsimoniosos. 
 
-- Dado que no se presenta problemas de homocedasticidad y a que, como se había mencionado al principio del presente trabajo, la transformación logarítmica no logra homogeneizar la Varianza de la serie, se descarta la aplicación de dicha transformación.
+- Si bien se tiene indicios de que puede no estar cumpliéndose el supuesto de homocedasticidad, la transformación logarítmica no logra homogeneizar la Varianza de la serie, por lo que se se descarta la aplicación de dicha transformación.
 
 - Se logra predecir con éxito a un bajo nivel de confianza dos de tres valores que tomó la serie en 2025: los asociados a los meses de Enero y Marzo. En el caso de Febrero se subpredice el valor que toma efectivamente la serie.
+
+- Ensayando el Modelo sugerido por `x13` ($\text{SARIMA}(0,1,0)(1,0,1)$) también se observa la tendencia a subestimar a la hora de predecir, con el detalle de que en este se hace de forma más notoria que el Modelo Original, evidenciado por los valores más altos en las métricas ME, MAE, MPE y MAPE.
+
+# ¿Preguntas?
+
+# Gracias!!!
