@@ -11,7 +11,6 @@ eval: true
 embed-resources: true
 mainfont: Arial
 sansfont: Arial
-background-transition: fade
 format:
   revealjs: 
     theme: white
@@ -77,14 +76,14 @@ Las tres observaciones restantes, referidas al año 2025, serán utilizadas con 
 ## Gráfico de la Serie Temporal
 
 ```{r}
-autoplot(cantidad_clientes_ts_completa) + 
-  labs(x = "Fecha", y = "Cantidad 
-       de personas", title = "Serie de Cantidad de Personas con
-       Deuda en Santander") +
+#| fig-align: center
+cantidad_clientes_ts %>%
+  autoplot() +
+  ggtitle("Serie de Clientes con Deuda") +
+  xlab("Fecha") +
+  ylab("Cantidad de Clientes") +
   theme_minimal() +
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
-  theme(panel.grid.minor = element_blank()) 
-
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 # Identificación del Modelo
@@ -92,6 +91,7 @@ autoplot(cantidad_clientes_ts_completa) +
 ### Análisis en el Dominio del Tiempo: Función de Autocorrelación (FAC)
 
 ```{r}
+#| fig-align: center
 clientes_acf <- ggAcf(cantidad_clientes_ts, lag.max = 24, type = "correlation") + 
   labs(x = "k (Rezago)", 
        y = TeX(r"($\hat{\rho_{k}}$)"), title = "Función de Autocorrelación (FAC)") +
@@ -109,6 +109,7 @@ Además, las autocorrelaciones significativas en rezagos altos sugieren la prese
 ### Análisis en el Dominio del Tiempo: Función de Autocorrelación Parcial (FACP)
 
 ```{r}
+#| fig-align: center
 clientes_pacf <- ggAcf(cantidad_clientes_ts, lag.max = 24, type = "partial") + 
     labs(x = "k (Rezago)", 
        y = TeX(r"($\hat{\alpha_{k}}$)"), title = "Función de Autocorrelación Parcial (FACP)") +
@@ -127,6 +128,7 @@ Se concluye de este primer análisis del Dominio del Tiempo en la posibilidad de
 ### Análisis en el Dominio de Frecuencias de la Serie Original
 
 ```{r}
+#| fig-align: center
 # Periodograma de la Serie:
 Espectro_Serie <- spectrum(cantidad_clientes_ts, method = c("pgram"), 
                            freq = seq(from = 0, to = 0.5, length.out = 1000), plot = FALSE) 
@@ -215,12 +217,11 @@ Como resultado se rechaza la Hipótesis Nula de que la serie sea Integrada de Or
 ### Serie Diferenciada de acuerdo a la Primera Diferencia Regular
 
 ```{r}
+#| fig-align: center
 diff_cantidad_clientes_ts <- diff(cantidad_clientes_ts, differences = 1)
 autoplot(diff_cantidad_clientes_ts) + 
-  labs(x = "Fecha", y = "Cantidad de 
-       Personas", 
-       title = "Serie de Cantidad de Personas con
-       Deuda en Santander",
+  labs(x = "Fecha", y = "Cantidad de \n       Personas", 
+       title = "Serie de Cantidad de Personas con\n       Deuda en Santander",
        subtitle = "Primera Diferencia Regular") +
   geom_hline(aes(yintercept = mean(diff_cantidad_clientes_ts)), colour = "red") +
   theme_minimal() +
@@ -243,15 +244,14 @@ Considerando los años por separado, la serie diferenciada se comporta de forma 
 ---
 
 ```{r}
+#| fig-align: center
 ggseasonplot(diff_cantidad_clientes_ts) +
-  labs(x = "Fecha", y = "Cantidad de 
-       Personas", 
-       title = "Serie de Cantidad de Personas con
-       Deuda en Santander",
+  labs(x = "Fecha", y = "Cantidad de \n       Personas", 
+       title = "Serie de Cantidad de Personas con\n       Deuda en Santander",
        subtitle = "Primera Diferencia Regular",
        color = "Año") +
   theme_minimal() +
-  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) + 
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5)) +
   theme(panel.grid.minor = element_blank())
 ```
 
@@ -274,6 +274,8 @@ ggsubseriesplot(diff_cantidad_clientes_ts) +
 ### FAC y FACP de la Serie Diferenciada
 
 ```{r}
+#| fig-align: center
+
 diff_clientes_acf <- ggAcf(diff_cantidad_clientes_ts, lag.max = 24, type = "correlation") +
       labs(x = "k (Rezago)", 
        y = TeX(r"($\hat{\rho_{k}}$)"), title = "FAC de la Serie Diferenciada") +
@@ -297,7 +299,7 @@ Las observaciones se encuentran autocorrelacionadas con sus valores de 3, 6 y 9 
 ### Dominio de Frecuencias: Análisis del Espectro de la Serie Diferenciada
 
 ```{r}
-# Periodograma de la Serie:
+#| fig-align: center
 Espectro_Serie_Diferenciada <- spectrum(diff_cantidad_clientes_ts, method = c("pgram"), 
                            freq = seq(from = 0, to = 0.5, length.out = 1000), plot = F) 
 # Se transforma las frecuencias para el intervalo [0,\pi]:
@@ -406,6 +408,7 @@ autoplot(diff_estacional_anual) +
 ---
 
 ```{r}
+#| fig-align: center
 diff_estacional_anual_acf <- ggAcf(diff_estacional_anual, lag.max = 24, type = "correlation") +
     labs(x = "k (Rezago)", 
        y = TeX(r"($\hat{\rho_{k}}$)"), title = "FAC de la Serie Diferenciada (Regular y Estacional)") +
@@ -429,6 +432,7 @@ Observar la FAC y FACP en los múltiplos de $12$. La significación tanto del pr
 ---
 
 ```{r}
+#| fig-align: center
 # Espectro de la Serie:
 Espectro_Serie_Diferenciada_Est_12 <- spectrum(diff_estacional_anual, method = c("pgram"), 
                                               freq = seq(from = 0, to = 0.5, length.out = 1000), plot = F) 
@@ -589,6 +593,7 @@ kable(error_measures_m2, caption = "Medidas de Error del Modelo SARIMA(2,1,0)(1,
 ### Diagnóstico de Residuos
 
 ```{r}
+#| fig-align: center
 residuos_m2 <- residuals(modelo_2)
 autoplot(residuos_m2) +
   labs(x = "Fecha", y = "Residuos", title = "Residuos del Modelo SARIMA(2,1,0)(1,1,0)") +
@@ -767,6 +772,8 @@ Comparacion_Prediccion_Realidad_Modelo_2 <- tibble(
 ---
 
 ```{r}
+#| fig-align: center
+
 ggplot(Comparacion_Prediccion_Realidad_Modelo_2) +
   geom_line(aes(x = Fecha, y = Valores, color = Serie)) +
   theme_minimal() +
@@ -845,6 +852,8 @@ kable(acc1, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)")
 También se realiza predicciones para el 2024 y los primeros tres meses de 2025, utilizando el mismo modelo propuesto pero entrenándolo con las observaciones disponibles hasta Diciembre de 2023.
 
 ```{r}
+#| fig-align: center
+
 # Predicción afuera de la Muestra:
 # Muestra de entrenamiento ("training set") hasta 2022 inclusive
 train_clientes <- window(cantidad_clientes_ts_completa, end = c(2023,12))
@@ -1018,6 +1027,8 @@ En el tercer gráfico se compara la serie desestacionalizada con el componente t
 ### Componente estacional
 
 ```{r}
+#| fig-align: center
+
 Plot_5_Estacional
 ```
 
@@ -1028,6 +1039,8 @@ A su vez, los picos ocurren, en general, con una frecuencia trimestral, lo que v
 ### Componente irregular
 
 ```{r}
+#| fig-align: center
+
 Plot_6_Irregular
 ```
 
@@ -1039,6 +1052,8 @@ El componente irregular refleja en su comportamiento la inclusión de los outlie
 A las predicciones realizadas en el punto anterior, se le agrega las predicciones de los componentes tendencial así como de la serie desestacionalizada:
 
 ```{r}
+#| fig-align: center
+
 grid.arrange(Plot_8_Prediccion_Serie_Desestacionalizada, Plot_9_Componente_Tendencia, nrow = 2)
 ```
 
