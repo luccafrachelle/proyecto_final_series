@@ -707,7 +707,9 @@ normalidad_m2 <- dplyr::bind_rows(
 kable(normalidad_m2, caption = "Tests de Normalidad para Residuos del Modelo SARIMA(2,1,0)(1,1,0)")
 ```
 
-A efectos de evaluar el cumplimiento del supuesto de Homocedasticidad o Varianza Constante, se planteó el contraste de Ljung-Box así como la FAC y FACP del cuadrado de los residuos. En el primero se observa la significación de los coeficientes de autocorrelación y autocorrelación parcial de orden 6, lo que sugiere el incumplimiento del supuesto. No obstante, los resultados del contraste de Ljung-Box hacen que se desestime esta idea.
+A efectos de evaluar el cumplimiento del supuesto de Homocedasticidad o Varianza Constante, se planteó el contraste de Ljung-Box así como la FAC y FACP del cuadrado de los residuos. En el primero se observa la significación de los coeficientes de autocorrelación y autocorrelación parcial de orden 6, lo que sugiere el incumplimiento del supuesto. 
+
+Los resultados del contraste de Ljung-Box para dicho retardo sugieren lo mismo, no obstante considerando los retardos posteriores se procede a desestimar esta idea.
 
 ```{r}
 residuos_m2_sq <- residuos_m2^2
@@ -723,7 +725,7 @@ for(i in c(3, 6, 9, 12, 24)){
     (Box.test(residuos_m2_sq, 
               lag = i, type = "Ljung-Box", fitdf = 3) %>% tidy()))
 };rm(i)
-kable(ljung_box_df_m2, caption = "Test de Ljung-Box para el Cuadrado de los Residuos del Modelo SARIMA(2,1,0)(1,1,0) (Rezagos 3, 6, 9, 12 y 24)")
+kable(ljung_box_df_m2_residuos_cuadrado, caption = "Test de Ljung-Box para el Cuadrado de los Residuos del Modelo SARIMA(2,1,0)(1,1,0) (Rezagos 3, 6, 9, 12 y 24)")
 ```
 
 ### Contraste de Media Nula de los Residuos
@@ -1109,9 +1111,11 @@ No obstante lo anterior, esta modelización presenta los siguientes puntos a des
 
 - El Modelo $\text{SARIMA}$ resultante es de bajo orden, lo que va de la mano con la idea de que los modelos de este tipo sean los mejores a la hora de predecir, además de resultar más parsimoniosos. 
 
-- Dado que no se presenta problemas de homocedasticidad y a que, como se había mencionado al principio del presente trabajo, la transformación logarítmica no logra homogeneizar la Varianza de la serie, se descarta la aplicación de dicha transformación.
+- Si bien se tiene indicios de que puede no estar cumpliéndose el supuesto de homocedasticidad, la transformación logarítmica no logra homogeneizar la Varianza de la serie, por lo que se se descarta la aplicación de dicha transformación.
 
 - Se logra predecir con éxito a un bajo nivel de confianza dos de tres valores que tomó la serie en 2025: los asociados a los meses de Enero y Marzo. En el caso de Febrero se subpredice el valor que toma efectivamente la serie.
+
+- Ensayando el Modelo sugerido por `x13` ($\text{SARIMA}(0,1,0)(1,0,1)$) también se observa la tendencia a subestimar a la hora de predecir, con el detalle de que en este se hace de forma más notoria que el Modelo Original, evidenciado por los valores más altos en las métricas ME, MAE, MPE y MAPE. Para más desarrollo consultar Anexo correspondiente.
 
 {{< pagebreak >}}
 
