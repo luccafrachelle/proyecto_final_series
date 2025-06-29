@@ -229,7 +229,7 @@ autoplot(diff_cantidad_clientes_ts) +
   theme(panel.grid.minor = element_blank())
 ```
 
----
+## Serie Diferenciada de acuerdo a la Primera Diferencia Regular
 
 La Primera Diferencia Regular adquiere un comportamiento más próximo al estacionario que la serie original. 
 
@@ -617,7 +617,7 @@ grid.arrange(residuos_m2_acf, residuos_m2_pacf)
 
 Buen comportamiento de los residuos. No hay coeficientes de autocorrelación ni autocorrelación parcial que resulten significativos.
 
-### Test de Ljung-Box
+## Test de Ljung-Box
 
 \
 
@@ -657,9 +657,7 @@ ggplot(data.frame(residuos = residuos_m2), aes(sample = residuos)) +
   theme_minimal()
 ```
 
----
-
-\
+## Contrastes de Normalidad
 
 ```{r}
 shapiro_test_m2 <- shapiro.test(residuos_m2) |> tidy()
@@ -696,7 +694,7 @@ for(i in c(3, 6, 9, 12, 24)){
 
 La significación de los coeficientes de autocorrelación y autocorrelación parcial de orden 6 sugiere el posible incumplimiento del supuesto de homocedasticidad.
 
----
+## Test de Ljung-Box
 
 ```{r}
 kable(ljung_box_df_m2_residuos_cuadrado, caption = "Test de Ljung-Box para el Cuadrado de los Residuos del Modelo SARIMA(2,1,0)(1,1,0) (Rezagos 3, 6, 9, 12 y 24)")
@@ -832,11 +830,11 @@ Tabla_ICs_4 <- (Predicciones_Modelo_2_Tabla_ICs %>% as.tibble %>% janitor::clean
 kable(Tabla_ICs_4, caption = "Intervalos de Predicción al 96% de los Primeros 3 Meses de 2025 contra Realidad")
 ```
 
----
+## Resultados
 
 Se puede apreciar que se captura al 50% de confianza el valor real de la serie en los meses de Enero y Marzo de 2025. Sin embargo, el valor de Febrero de 2025 requiere utilizar un intervalo de amplitud mayor asociado a una confianza aproximada del 96%.
 
-### Métricas sobre los errores de predicción
+## Métricas sobre los errores de predicción
 
 \
 
@@ -919,7 +917,7 @@ ggplot(Predicciones_Dentro_Muestra_Tibble_m2) +
 
 Se nota una diferencia en la pendiente de la predicción puntual y la realidad. La primera tiende a ser cada vez menor que la segunda a medida que aumenta el horizonte de predicción. 
 
-### Métricas sobre los errores de predicción
+## Métricas sobre los errores de predicción
 
 \
 
@@ -994,7 +992,7 @@ ggplot(Predicciones_Dentro_Muestra_Tibble_m2_2) +
 
 La predicción para los siguientes meses resulta bastante precisa. Es solo a partir de Diciembre del 2024 que se observa una discrepancia relativamente mayor con la serie empírica con tendencia a subestimar.
 
-### Métricas sobre los errores de predicción
+## Métricas sobre los errores de predicción
 
 \
 
@@ -1011,14 +1009,14 @@ Mediante la función `x13` (asociada al método estadístico del mismo nombre) d
 
 Como resultado se obtuvo la descomposición de la serie, lo que permitió computar una serie desestacionalizada.
 
----
+## Resultados
 
 ```{r}
 load("./data/Salidas_Script_Componentes.Rdata")
 grid.arrange(Plot_1_Serie_Original, Plot_2_Serie_Desestacionalizada, Plot_4_SA_T, nrow = 3)
 ```
 
----
+## Resultados
 
 En los dos primeros gráficos se puede notar como la serie se ha vuelto más suave, no reflejando las periodicidades de la serie original. 
 
@@ -1072,6 +1070,10 @@ Respecto al Modelo $\text{SARIMA}(2,1,0)(1,1,0)$ se debe tener en cuenta que:
 - Dadas dos muestras de entrenamiento se observó la tendencia a subestimar por parte del modelo.
 
 ---
+
+\
+
+\
 
 No obstante lo anterior, esta modelización presenta los siguientes puntos a destacar:
 
