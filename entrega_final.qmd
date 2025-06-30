@@ -874,15 +874,15 @@ acc1 <- round(accuracy(Predicciones_Modelo_2, test_clientes), 4)
 kable(acc1, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
 ```
 
-Un ME (Mean Error o Error Medio) positivo implica que el modelo en promedio subestima. Es posible ver con qué porcentaje al observar el MPE (Mean Percentage Error o Error Medio Porcentual). En el caso de las predicciones a un paso sobre el conjunto de entrenamiento^[Se recuerda que en este caso el set de entrenamiento está compuesto por las observaciones hasta diciembre de 2024, mientras que el de prueba o test está integrado por las tres observaciones disponibles para 2025.], los errores se compensan lo suficiente generando que dicha subestimación sea considerablemente pequeña, con un PME de solo el 7,6%. Por otro lado, para los errores de predicción sobre el conjunto de testeo, la subestimación es relativamente grande, en promedio de un 66%, lo que está explicado por la predicción referida a Febrero de 2025.
+Un ME (Mean Error o Error Medio) positivo implica que el modelo en promedio subestima. Es posible ver con qué porcentaje al observar el MPE (Mean Percentage Error o Error Medio Porcentual). En el caso de las predicciones a un paso sobre el conjunto de entrenamiento^[Se recuerda que en este caso el set de entrenamiento está compuesto por las observaciones hasta diciembre de 2024, mientras que el de prueba o test está integrado por las tres observaciones disponibles para 2025.], los errores se compensan lo suficiente generando que dicha subestimación sea considerablemente pequeña, con un MPE de solo el 0,076%. Por otro lado, para los errores de predicción sobre el conjunto de testeo, la subestimación es mayor, en promedio de un 0,66%, lo que está explicado por la predicción referida a Febrero de 2025.
 
-El MAE (Mean Absolute Error o Error Absoluto Medio) presenta un error en términos absolutos que, para ambos casos, en comparación con el rango de valores de la serie, no parece ser tan alto. Sin embargo, el MAPE (Mean Absolute Percentage Error o Error Medio Absoluto Porcentual), el cual muestra dichos errores en términos relativos, es considerablemente alto. El modelo comete en promedio un 44% de error relativo respecto al valor real para el caso del set de entrenamiento y un 66% para el caso de los tres meses de 2025.
+El MAE (Mean Absolute Error o Error Absoluto Medio) presenta un error en términos absolutos que, para ambos casos, en comparación con el rango de valores de la serie, no parece ser tan alto. El MAPE (Mean Absolute Percentage Error o Error Medio Absoluto Porcentual), el cual muestra dichos errores en términos relativos, es considerablemente muestra que el modelo comete en promedio un 0,44% de error relativo respecto al valor real para el caso del set de entrenamiento y un 0,66% para el caso de los tres meses de 2025.
 
 Es preciso señalar que los valores de ME y MAE son prácticamente los mismos para el set de testeo, lo que es producto de que en las tres predicciones realizadas se subestimó el valor real de la serie, como se pudo bien observar en gráficos anteriores. 
 
 El RMSE (Root Mean Square Error o Raiz Media de los Errores al Cuadrado), el cual tiene la característica de penalizar errores grandes, si bien es más alto que el MAE para ambos casos, en proporción a la media de la serie representa solo un 0,6% y un 1% respectivamente. De esta manera no se presenta errores extremadamente grandes en las predicciones al comparar con el promedio de la serie.
 
-El MASE (Mean Absolute Scaled Error o Error Medio Absoluto Escalado) es una métrica que compara el MAE de la predicción con el MAE que se obtiene al utilizar un modelo naive de un lag. En este caso el modelo planteado predice ampliamente mejor que uno naive, ya que los valores 7,2%, para el set de training, y 13,5%, para el set de testeo, son extremadamente bajos.
+El MASE (Mean Absolute Scaled Error o Error Medio Absoluto Escalado) es una métrica que compara el MAE de la predicción con el MAE que se obtiene al utilizar un modelo naive de un lag. En este caso el modelo planteado predice ampliamente mejor que uno naive, ya que los valores 0.072, para el set de training, y 0,013%, para el set de testeo, son extremadamente bajos.
 
 Por su lado, el ACF1 (Autocorrelation of errors at lag 1 o Autocorrelación de los Errores en el Rezago 1), medida de la correlación entre errores a un rezago, muestra que existe poca correlación entre los errores del set de training, mientras que para el set de testeo parece existir cierta correlación negativa.
 
@@ -972,7 +972,7 @@ Según el ME y el MPE, se subestima ampliamente los valores de la serie empíric
 
 El RMSE y el MAE también aumentaron notablemente. Aunque en comparación con la escala no parecen ser tan altos y en proporción a la media solo representan un 8%. 
 
-Analizándolo en términos relativos, el MAPE implica un error de predicción muy alto.
+Analizándolo en términos relativos, el MAPE implica un error de predicción alto.
 
 Por su parte, el MASE, al ser menor que 1, sugiere que se predice mejor que con un modelo naive.
 
