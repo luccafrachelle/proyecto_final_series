@@ -882,7 +882,7 @@ Es preciso señalar que los valores de ME y MAE son prácticamente los mismos pa
 
 El RMSE (Root Mean Square Error o Raiz Media de los Errores al Cuadrado), el cual tiene la característica de penalizar errores grandes, si bien es más alto que el MAE para ambos casos, en proporción a la media de la serie representa solo un 0,6% y un 1% respectivamente. De esta manera no se presenta errores extremadamente grandes en las predicciones al comparar con el promedio de la serie.
 
-El MASE (Mean Absolute Scaled Error o Error Medio Absoluto Escalado) es una métrica que compara el MAE de la predicción con el MAE que se obtiene al utilizar un modelo naive de un lag. En este caso el modelo planteado predice ampliamente mejor que uno naive, ya que los valores 0.072, para el set de training, y 0,013%, para el set de testeo, son extremadamente bajos.
+El MASE (Mean Absolute Scaled Error o Error Medio Absoluto Escalado) es una métrica que compara el MAE de la predicción con el MAE que se obtiene al utilizar un modelo naive de un lag. En este caso el modelo planteado predice ampliamente mejor que uno naive, ya que los valores 0.072, para el set de training, y 0,13, para el set de testeo, son extremadamente bajos.
 
 Por su lado, el ACF1 (Autocorrelation of errors at lag 1 o Autocorrelación de los Errores en el Rezago 1), medida de la correlación entre errores a un rezago, muestra que existe poca correlación entre los errores del set de training, mientras que para el set de testeo parece existir cierta correlación negativa.
 
