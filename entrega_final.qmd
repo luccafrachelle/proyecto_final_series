@@ -707,7 +707,7 @@ normalidad_m2 <- dplyr::bind_rows(
 kable(normalidad_m2, caption = "Tests de Normalidad para Residuos del Modelo SARIMA(2,1,0)(1,1,0)")
 ```
 
-A efectos de evaluar el cumplimiento del supuesto de Homocedasticidad o Varianza Constante, se planteó el contraste de Ljung-Box así como la FAC y FACP del cuadrado de los residuos. En el primero se observa la significación de los coeficientes de autocorrelación y autocorrelación parcial de orden 6, lo que sugiere el incumplimiento del supuesto. 
+A efectos de evaluar el cumplimiento del supuesto de Homocedasticidad o Varianza Constante, se planteó la FAC y FACP del cuadrado de los residuos así como el contraste de Ljung-Box. En el primero se observa la significación de los coeficientes de autocorrelación y autocorrelación parcial de orden 6, lo que sugiere el incumplimiento del supuesto. 
 
 Los resultados del contraste de Ljung-Box para dicho retardo sugieren lo mismo, no obstante considerando los retardos posteriores se procede a desestimar esta idea.
 
