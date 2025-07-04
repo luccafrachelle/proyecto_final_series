@@ -1001,6 +1001,86 @@ acc3 <- round(accuracy(Pred_Final_Test_m2_2, test_clientes), 4)
 kable(acc3, caption = r"(Métricas de Predicción - SARIMA$(2,1,0)(1,1,0)$)") 
 ```
 
+## Predicción del crecimiento a 2025
+
+```{r}
+# Predicción para Diciembre de 2025
+prediccion_diciembre_2025 <- forecast(
+  modelo_2, 
+  fan = FALSE, 
+  xreg = as.matrix(xreg_prediccion_m2[85, , drop = FALSE]), 
+  h = 1, 
+  level = c(96)
+)
+
+# Valor real de Diciembre de 2024
+valor_diciembre_2024 <- cantidad_clientes_ts[time(cantidad_clientes_ts) == 2024 + 11/12]
+
+# Predicción para Diciembre de 2025
+pred_dic_2025 <- prediccion_diciembre_2025$mean[1]
+
+# Intervalos de confianza para Diciembre de 2025
+ci_lo_96 <- prediccion_diciembre_2025$lower[1, "96%"]
+ci_hi_96 <- prediccion_diciembre_2025$upper[1, "96%"]
+
+# Crecimiento porcentual
+crecimiento_2025_predicho <- ((pred_dic_2025 / valor_diciembre_2024) - 1) * 100
+crecimiento_ci_lo <- ((ci_lo_96 / valor_diciembre_2024) - 1) * 100
+crecimiento_ci_hi <- ((ci_hi_96 / valor_diciembre_2024) - 1) * 100
+
+# Crear tibble con la predicción
+prediccion_diciembre_df <- tibble(
+  Fecha = "Diciembre - 2025",
+  Prediccion = round(pred_dic_2025, 2),
+  `Crecimiento %` = paste0(round(crecimiento_2025_predicho, 2), "%"),
+  `CI 96% Inferior` = paste0(round(crecimiento_ci_lo, 2), "%"),
+  `CI 96% Superior` = paste0(round(crecimiento_ci_hi, 2), "%")
+)
+
+kable(prediccion_diciembre_df, caption = "Predicción de Crecimiento para Diciembre de 2025")
+
+
+# Cálculo del crecimiento interanual histórico y predicho
+
+# Obtener los valores de diciembre de cada año
+dec_values <- c()
+dec_years <- c()
+for (year in 2018:2024) {
+  # Extraer el valor de diciembre del año actual usando window
+  dec_value_ts <- window(cantidad_clientes_ts_completa, start = c(year, 12), end = c(year, 12))
+  
+  # Verificar si el valor existe y es un solo elemento, luego agregarlo
+  if (!is.na(dec_value_ts) && length(dec_value_ts) == 1) {
+    dec_values <- c(dec_values, as.numeric(dec_value_ts))
+    dec_years <- c(dec_years, year)
+  }
+}
+
+# Calcular el crecimiento interanual
+crecimiento_interanual <- c()
+for (i in 2:(length(dec_values))) {
+  growth <- ((dec_values[i] / dec_values[i-1]) - 1) * 100
+  crecimiento_interanual <- c(crecimiento_interanual, growth)
+}
+
+# Crear tibble para el crecimiento interanual histórico
+crecimiento_historico_df <- tibble(
+  Año = paste0(dec_years[2:length(dec_years)], "-", dec_years[1:(length(dec_years)-1)]),
+  `Crecimiento Interanual %` = round(crecimiento_interanual, 2)
+)
+
+# Añadir la predicción de 2025 al tibble de crecimiento interanual
+crecimiento_predicho_2025_df <- tibble(
+  Año = "2025-2024 (Predicción)",
+  `Crecimiento Interanual %` = round(crecimiento_2025_predicho, 2)
+)
+
+# Unir ambos tibbles
+tabla_crecimiento_final <- rbind(crecimiento_historico_df, crecimiento_predicho_2025_df)
+
+kable(tabla_crecimiento_final, caption = "Crecimiento Interanual Histórico y Predicho (Diciembre a Diciembre)")
+```
+
 # Descomposición de la Serie
 
 \
